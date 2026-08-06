@@ -14,9 +14,11 @@ Everything stays on your machine: no account, no telemetry, no network calls.
 
 **No dependencies outside the Python standard library.**
 
-![The dashboard, rendered from the project's test fixture](docs/screenshot.jpg)
+![The dashboard showing token spend broken down by model, project, skill and source](docs/screenshot.jpg)
 
-*Figures above are the synthetic test fixture, not real usage.*
+*Every figure above is synthetic demo data, not real usage. Reproduce it with
+`python3 tools/demo_page.py demo.html` and open the file — a way to see the
+layout before you have any history of your own.*
 
 ## Requirements
 
@@ -132,6 +134,101 @@ The lowest-effort option: run it on the machine you already work on and leave
 screen on a second monitor. Everything above about networks and IP addresses
 stops mattering, because there is only one machine.
 
+## Follow-up: real billed cost from the Claude API
+
+Everything this dashboard shows is **reconstructed** from local transcripts and
+priced at list rates. If you also call the Claude API directly, Anthropic will
+tell you what you were *actually billed* — and that is the one number this tool
+can't derive.
+
+This section is a guide, not a feature: **nothing here is wired into the
+dashboard**, and no credentials belong in this repository. Follow it if you
+want the real figures alongside the estimate.
+
+### First, check whether it applies to you
+
+| You are | What you get |
+|---|---|
+| On a **Console (Claude Platform) organization** | The Usage & Cost Admin API below |
+| On **Claude Enterprise** (claude.ai) | A different API — the [Enterprise Analytics API](https://platform.claude.com/docs/en/api/admin/analytics), with an Analytics key |
+| An **individual account** | Nothing — see below |
+| Using **Claude Platform on AWS** | Not available programmatically; use the Console's Usage and Cost pages |
+
+> **The Admin API is unavailable for individual accounts.** If you use Claude
+> Code on a personal Pro or Max subscription and have never set up a Console
+> organization, there is no key to create and this section does not apply. A
+> Max subscription is not an API account — the two are billed separately.
+
+### 1. Create an Admin API key
+
+In the Claude Console, under organization settings — see
+[Create an Admin API key](https://platform.claude.com/docs/en/manage-claude/admin-api-keys).
+It is **not** the same as a normal API key and looks like `sk-ant-admin01-…`.
+
+Treat it as a high-privilege credential: it reads organization-wide billing.
+Keep it in your shell environment or a secrets manager, never in a file in a
+repository:
+
+```bash
+export ANTHROPIC_ADMIN_KEY='sk-ant-admin01-...'   # not committed anywhere
+```
+
+### 2. Tokens — the usage report
+
+```bash
+curl -s "https://api.anthropic.com/v1/organizations/usage_report/messages?\
+starting_at=2026-08-01T00:00:00Z&\
+ending_at=2026-08-08T00:00:00Z&\
+bucket_width=1d&\
+group_by[]=model" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "x-api-key: $ANTHROPIC_ADMIN_KEY"
+```
+
+Buckets are `1m`, `1h`, or `1d`, capped at 1440 / 168 / 31 buckets per request
+respectively. You can group and filter by model, workspace, API key, service
+tier, and context window. Token classes come back split the same way this
+dashboard splits them — uncached input, cached input, cache creation, output —
+so the two are directly comparable.
+
+### 3. Dollars — the cost report
+
+```bash
+curl -s "https://api.anthropic.com/v1/organizations/cost_report?\
+starting_at=2026-08-01T00:00:00Z&\
+ending_at=2026-08-31T00:00:00Z&\
+group_by[]=description" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "x-api-key: $ANTHROPIC_ADMIN_KEY"
+```
+
+Daily granularity only. **Costs are returned as decimal strings in the
+currency's lowest unit (cents)** — divide before comparing them to anything on
+this page, and don't parse them as floats if you care about exactness.
+
+### 4. Things that will bite you
+
+- **Both endpoints paginate.** Check `has_more` and pass `next_page` back as
+  `page` until it is false, or you will silently read only the first slice.
+- **Priority Tier spend is missing from the cost report** — track it through
+  the usage report's `service_tier` instead.
+- **Code execution is the mirror image**: it appears only in the *cost* report,
+  under a `Code Execution Usage` description, and not in the usage report.
+- **Data lags a few minutes**, and poll no more than about once a minute.
+- Console Workbench usage has a `null` api_key_id; the default workspace has a
+  `null` workspace_id. Neither is an error.
+
+### 5. Why this isn't merged into the dashboard
+
+The two sources are not the same measurement, and adding them together would
+produce a number that means nothing. This tool reconstructs what *subscription*
+usage would have cost at list rates; the Admin API reports what an *API
+organization* was actually charged. If you wire this up, keep it as its own
+panel with its own heading — as the "By source" split already does for the
+surfaces that are covered.
+
+Reference: [Usage and Cost API](https://platform.claude.com/docs/en/api/usage-cost-api).
+
 ## What the numbers mean
 
 - **api-equivalent cost** — what the usage would have cost at Claude API list
@@ -164,7 +261,7 @@ models are released and repriced; editing that table is the whole update.
 |---|---|---|
 | Claude Code | yes | writes transcripts with per-message `usage` |
 | Claude Desktop — Cowork | yes | same transcript format, different root |
-| Claude API / Console | no | billed server-side; needs the Admin API and a key |
+| Claude API / Console | no | billed server-side — see [Follow-up: real billed cost](#follow-up-real-billed-cost-from-the-claude-api) |
 | Claude Desktop — chat | no | no token counts stored locally |
 | Claude in Chrome | no | proxies claude.ai, same as chat |
 
