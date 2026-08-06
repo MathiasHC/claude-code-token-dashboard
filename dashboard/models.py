@@ -82,6 +82,10 @@ class DashboardData:
     max_plan_monthly_usd: float
     prev_month_label: str
     prev_month_cost: float
+    #: How the comparison plan is named on the page. Kept beside the amount
+    #: so the band says what it is comparing against, rather than hard-coding
+    #: one subscription tier into the markup.
+    plan_label: str = "Max 20×"
     yesterday_cost: float = 0.0
     prior_7_days_cost: float = 0.0
     prev_month_to_date_cost: float = 0.0

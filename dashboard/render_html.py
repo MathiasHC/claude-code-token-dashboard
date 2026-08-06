@@ -214,6 +214,26 @@ def _bands(data: DashboardData) -> str:
     return f'<table class="bands"><tbody><tr>{row}</tr></tbody></table>'
 
 
+def _plan_comparison(data: DashboardData) -> str:
+    """Month-to-date api-equivalent cost against what the plan actually costs.
+
+    With no subscription the ratio is meaningless — dividing by zero would be
+    the least of it, since the api-equivalent figure *is* the bill in that
+    case. Say that instead of printing a 0.0x multiple.
+    """
+    if data.max_plan_monthly_usd <= 0:
+        return (
+            f"vs {escape(data.plan_label)} &nbsp; "
+            f"{_money(data.month_to_date.cost)} api-equivalent &middot; "
+            "no subscription to compare against"
+        )
+    return (
+        f"vs {escape(data.plan_label)} &nbsp; {_money(data.month_to_date.cost)} "
+        f"api-equivalent / {_money(data.max_plan_monthly_usd)} actual = "
+        f'<span class="mult">{data.effective_multiple:.1f}&times;</span> effective'
+    )
+
+
 def render(data: DashboardData, *, warning: str | None = None, refresh_seconds: int = 30) -> str:
     banner = f'<div class="warn">{escape(warning)}</div>' if warning else ""
 
@@ -248,9 +268,7 @@ def render(data: DashboardData, *, warning: str | None = None, refresh_seconds: 
 <div class="maxrow">
 <span class="mom">{escape(data.prev_month_label)} {_money(data.prev_month_cost)}
  &middot; {month_text}</span>
-vs MAX 20&times; &nbsp; {_money(data.month_to_date.cost)} api-equivalent /
-{_money(data.max_plan_monthly_usd)} actual =
-<span class="mult">{data.effective_multiple:.1f}&times;</span> effective
+{_plan_comparison(data)}
 </div>
 {_bands(data)}
 <table class="grid"><tbody>

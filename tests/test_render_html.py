@@ -116,8 +116,8 @@ def test_page_shows_all_four_window_figures(page):
         assert label in page
 
 
-def test_page_shows_the_max_comparison_and_multiple(page):
-    assert "MAX 20" in page
+def test_page_shows_the_plan_comparison_and_multiple(page):
+    assert "Max 20" in page
     assert "$200" in page
     assert "effective" in page
 
@@ -477,5 +477,29 @@ def test_source_band_clamps_widths_when_a_share_is_out_of_range():
 def test_source_labels_are_html_escaped():
     data = _bare_data(by_source=[Bar(label="<script>x</script>", cost=1.0, share=1.0)])
     out = render_html.render(data)
+    assert "<script>x</script>" not in out
+    assert "&lt;script&gt;" in out
+
+
+# --- plan comparison band -----------------------------------------------
+
+def test_plan_band_names_the_configured_plan():
+    """The band is the one place the user's own subscription appears, so it
+    must say which plan it compares against rather than assume one."""
+    out = render_html.render(_bare_data(max_plan_monthly_usd=100.0, plan_label="Max 5×"))
+    assert "vs Max 5×" in out
+    assert "$100.00 actual" in out
+
+
+def test_plan_band_drops_the_multiple_when_there_is_no_subscription():
+    """On an API-only account the api-equivalent figure *is* the bill, so a
+    ratio against $0 is meaningless — and would render '0.0x effective'."""
+    out = render_html.render(_bare_data(max_plan_monthly_usd=0.0, plan_label="API only"))
+    assert "no subscription to compare against" in out
+    assert "effective" not in out
+
+
+def test_plan_label_is_html_escaped():
+    out = render_html.render(_bare_data(plan_label="<script>x</script>"))
     assert "<script>x</script>" not in out
     assert "&lt;script&gt;" in out

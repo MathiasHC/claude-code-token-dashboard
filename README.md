@@ -35,6 +35,11 @@ cd claude-code-token-dashboard
 python3 -m dashboard
 ```
 
+The first run asks one question — **which Claude plan you're on** — because the
+headline comparison is "what this usage would have cost at API rates versus
+what you actually pay", and only you know the second half. The answer is saved
+and never asked again. See [Which plan you're on](#which-plan-youre-on).
+
 It prints a URL like `http://192.168.1.42:8420/d/AbC123…`. Open it locally to
 check, then on whatever device you want it to live on.
 
@@ -116,7 +121,7 @@ survives reboots:
 Description=Claude token dashboard
 [Service]
 WorkingDirectory=%h/claude-token-dashboard
-ExecStart=/usr/bin/python3 -m dashboard --port 8420
+ExecStart=/usr/bin/python3 -m dashboard --port 8420 --plan max-20x
 Restart=always
 [Install]
 WantedBy=default.target
@@ -127,12 +132,63 @@ systemctl --user enable --now token-dashboard
 loginctl enable-linger "$USER"   # keep it running when you are logged out
 ```
 
+`--plan` is spelled out in the unit because a service has no terminal to be
+asked on — see [Which plan you're on](#which-plan-youre-on).
+
 ### 3. A second monitor, or no extra hardware at all
 
 The lowest-effort option: run it on the machine you already work on and leave
 `http://localhost:8420/d/YOUR-TOKEN` open in a pinned browser tab, or full
 screen on a second monitor. Everything above about networks and IP addresses
 stops mattering, because there is only one machine.
+
+## Which plan you're on
+
+The first interactive run asks, offering the common plans and letting you type
+any amount instead:
+
+```
+Which Claude plan are you on? This is only used for the
+'vs plan' comparison — everything else is unaffected.
+
+  1. API only — no subscription
+  2. Pro — $20/month
+  3. Max 5× — $100/month
+  4. Max 20× — $200/month  (default)
+  5. Team — $25/month
+  6. Something else — enter the monthly amount you pay
+
+Plan [4]:
+```
+
+What actually gets stored is **a monthly dollar figure**, not a plan name — the
+menu is just a fast way to pick one. Annual billing is cheaper than the prices
+above (Pro is $17/month on an annual plan), Team seats vary, and Enterprise is
+seat price plus usage, so anyone in those cases picks option 6 and enters what
+they really pay. Prices here are monthly-billing rates as of August 2026 and
+are Anthropic's to change; the amount you enter is the one that's used.
+
+Picking **API only** drops the multiple entirely — with no subscription the
+api-equivalent figure *is* your bill, and a ratio against $0 would be noise.
+
+Set it without the prompt, or change it later:
+
+```bash
+python3 -m dashboard --plan max-5x     # a listed plan, saved for next time
+python3 -m dashboard --plan 149        # any monthly amount
+CLAUDE_DASHBOARD_PLAN=pro python3 -m dashboard   # one-off, not saved
+```
+
+Resolution order is `--plan` → `CLAUDE_DASHBOARD_PLAN` → the saved config →
+the prompt → Max 20×. The answer lives in
+`~/.claude-token-dashboard/config.json` (override with
+`CLAUDE_DASHBOARD_CONFIG`); delete that file to be asked again.
+
+> **Running as a service? Set the plan first.** A systemd unit, a login
+> autostart, or a container has nobody to answer a prompt, so the dashboard
+> never asks when stdin isn't a terminal — it warns on stderr and falls back to
+> Max 20× rather than blocking forever on a port that never opens. Run it once
+> by hand, or pass `--plan` in the unit file.
 
 ## Follow-up: real billed cost from the Claude API
 
@@ -234,9 +290,8 @@ Reference: [Usage and Cost API](https://platform.claude.com/docs/en/api/usage-co
 - **api-equivalent cost** — what the usage would have cost at Claude API list
   rates. It models no batch discounts and no promotional rates. It is a
   comparison figure, not a bill.
-- **vs MAX 20×** — that figure against a $200/month subscription. Change
-  `MAX_PLAN_MONTHLY_USD` in `dashboard/pricing.py` if you are on a different
-  plan.
+- **vs &lt;your plan&gt;** — that figure against what you actually pay per month,
+  and the resulting multiple. See [Which plan you're on](#which-plan-youre-on).
 - **cache read / cache write** — cache reads bill at 0.1× the input rate;
   writes at 1.25× (5-minute TTL) or 2× (1-hour TTL). Most cost is usually
   cache reads rather than output, because context replay dominates.
@@ -300,6 +355,8 @@ not mixed into these totals.
   transcripts. Older databases are migrated in place on open.
 - The access token is `~/.claude-token-dashboard/token`. Delete it to roll the
   URL; a new one is generated on the next start.
+- Your plan answer is `~/.claude-token-dashboard/config.json` (override with
+  `CLAUDE_DASHBOARD_CONFIG`). Delete it to be asked again.
 
 Nothing leaves your machine. There is no telemetry, no network egress, and no
 account of any kind — the dashboard only ever reads local files and serves

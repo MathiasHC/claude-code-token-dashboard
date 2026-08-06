@@ -11,7 +11,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from . import aggregate, cowork, ingest, render_html, scan, store
+from . import aggregate, cowork, ingest, plans, render_html, scan, store
 
 DEFAULT_PORT = 8420
 DEFAULT_MIN_INGEST_INTERVAL = 10.0
@@ -71,6 +71,7 @@ class App:
         *,
         token: str,
         cowork_dir: Path | None = None,
+        plan: plans.Plan | None = None,
         min_ingest_interval: float = DEFAULT_MIN_INGEST_INTERVAL,
         clock=time.monotonic,
         now=dt.datetime.now,
@@ -78,6 +79,9 @@ class App:
         self.db_path = db_path
         self.projects_dir = Path(projects_dir)
         self.cowork_dir = Path(cowork_dir) if cowork_dir is not None else cowork.default_cowork_dir()
+        # Never resolved here: resolve() can prompt, and App is constructed
+        # inside a request path in tests. The CLI settles the plan up front.
+        self.plan = plan or plans.DEFAULT
         self.token = token
         self.min_ingest_interval = min_ingest_interval
         self._clock = clock
@@ -116,7 +120,13 @@ class App:
                     with store.Store(self.db_path) as db:
                         result = self._scan(self.projects_dir, db.file_stats())
                         db.ingest(result)
-                        data = aggregate.build(db.records(), db.titles(), now=self._now())
+                        data = aggregate.build(
+                            db.records(),
+                            db.titles(),
+                            now=self._now(),
+                            max_plan_monthly_usd=self.plan.monthly_usd,
+                            plan_label=self.plan.label,
+                        )
                     self.ingest_count += 1
                     self._last_ingest_at = self._clock()
                     self._last_success_at = self._now()
@@ -187,15 +197,21 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def serve(host: str = "0.0.0.0", port: int = DEFAULT_PORT) -> None:
+def serve(
+    host: str = "0.0.0.0",
+    port: int = DEFAULT_PORT,
+    plan: plans.Plan | None = None,
+) -> None:
     token = load_or_create_token(store.DATA_DIR)
     app = App(
         db_path=store.default_db_path(),
         projects_dir=scan.default_projects_dir(),
         token=token,
+        plan=plan,
     )
     httpd = ThreadingHTTPServer((host, port), build_handler(app, token))
     print(f"Claude token dashboard on http://{local_ip()}:{port}/d/{token}")
+    print(f"Comparing against {app.plan.label}. Change it with --plan.")
     print("Open that on the iPad, then Share > Add to Home Screen. Ctrl-C to stop.")
     try:
         httpd.serve_forever()

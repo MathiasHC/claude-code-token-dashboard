@@ -40,6 +40,7 @@ def build(
     *,
     now: dt.datetime,
     max_plan_monthly_usd: float = pricing.MAX_PLAN_MONTHLY_USD,
+    plan_label: str = "Max 20×",
     daily_days: int = 30,
     top_n: int = 5,
 ) -> DashboardData:
@@ -173,6 +174,7 @@ def build(
         all_time=_window("all time", grand_total, len(dated)),
         active_days=len(per_day),
         max_plan_monthly_usd=max_plan_monthly_usd,
+        plan_label=plan_label,
         prev_month_label=prev_month_label,
         prev_month_cost=bucket_cost["prev_month"],
         yesterday_cost=bucket_cost["yesterday"],
