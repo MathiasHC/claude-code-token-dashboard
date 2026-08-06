@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="30">
+<meta name="viewport" content="width=1024, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Claude Tokens</title>
+<style>* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0e1116; color:#e6edf3;
+       font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
+       font-size:16px; padding:10px; }
+a { color:inherit; text-decoration:none; }
+.titlebar { font-size:14px; letter-spacing:2px; color:#8b949e;
+            border-bottom:1px solid #30363d; padding-bottom:6px; margin-bottom:8px; }
+.titlebar .when { float:right; letter-spacing:0; }
+.warn { background:#3d1d1d; border:1px solid #f85149; color:#ffa198;
+        padding:6px 10px; margin-bottom:8px; font-size:13px; }
+table.hero { width:100%; table-layout:fixed; border-collapse:collapse; margin-bottom:6px; }
+table.hero td { vertical-align:top; }
+.hlabel { font-size:11px; letter-spacing:1.5px; color:#8b949e; }
+.hvalue { font-size:40px; font-weight:bold; line-height:46px; }
+.hsub { font-size:11px; color:#8b949e; }
+.hdelta { font-size:11px; color:#8b949e; }
+.maxrow { background:#161b22; border:1px solid #30363d;
+          padding:7px 10px; margin-bottom:8px; font-size:13px; color:#8b949e; }
+.maxrow .mult { font-size:22px; font-weight:bold; color:#3fb950; }
+.maxrow .mom { float:right; }
+/* border-spacing matches table.grid so the bands line up with the panels
+   below them; margin-bottom keeps the vertical rhythm the single full-width
+   delegation band used to have. */
+table.bands { width:100%; table-layout:fixed; border-collapse:separate;
+              border-spacing:6px 0; margin:0 0 8px 0; }
+td.band { background:#161b22; border:1px solid #30363d; padding:7px 10px;
+          font-size:13px; color:#8b949e; vertical-align:top; }
+.bandtitle { color:#e6edf3; letter-spacing:1.5px; font-size:11px; margin-bottom:4px; }
+table.grid { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:6px; }
+table.grid > tbody > tr > td { background:#161b22; border:1px solid #30363d;
+                               padding:7px 9px; vertical-align:top; }
+h2 { font-size:10px; letter-spacing:1.5px; color:#8b949e;
+     font-weight:normal; margin-bottom:5px; }
+table.rows { width:100%; border-collapse:collapse; }
+table.rows td { font-size:13px; padding:2px 0; white-space:nowrap; overflow:hidden; }
+td.amt { text-align:right; width:80px; }
+td.pct { text-align:right; width:52px; color:#8b949e; }
+td.barcell { padding-left:8px; }
+.bar { background:#21262d; height:9px; }
+.fill { height:9px; }
+.note { font-size:11px; color:#8b949e; margin-top:5px; }
+table.daily { width:100%; table-layout:fixed; border-collapse:collapse; }
+table.daily td { vertical-align:bottom; text-align:center; padding:0 1px; }
+.col { background:#238636; }
+.dscale { font-size:10px; color:#8b949e; }</style>
+</head><body>
+<div class="titlebar">CLAUDE TOKENS<span class="when">30 Jul 2026 09:12</span></div>
+
+<table class="hero"><tr>
+<td><div class="hlabel">TODAY</div><div class="hvalue">$12.34</div><div class="hsub">7 msgs</div><div class="hdelta">▲ 23.4% vs yesterday</div></td>
+<td><div class="hlabel">7 DAYS</div><div class="hvalue">$45.67</div><div class="hsub">21 msgs</div><div class="hdelta">▼ 8.7% vs prior 7 days</div></td>
+<td><div class="hlabel">MONTH TO DATE</div><div class="hvalue">$89.01</div><div class="hsub">48 msgs</div><div class="hdelta">▼ 11.0% vs same point last month</div></td>
+<td><div class="hlabel">ALL TIME &middot; 42 ACTIVE DAYS</div><div class="hvalue">$1,234.56</div><div class="hsub">602 msgs</div></td>
+</tr></table>
+<div class="maxrow">
+<span class="mom">2026-06 $150.25
+ &middot; ▼ 11.0% vs same point last month</span>
+vs MAX 20&times; &nbsp; $89.01 api-equivalent /
+$200.00 actual =
+<span class="mult">0.4&times;</span> effective
+</div>
+<table class="bands"><tbody><tr><td class="band"><div class="bandtitle">DELEGATION</div>main $800.00 (64.8%)<div class="bar" style="margin:4px 0 6px 0"><div class="fill" style="width:64.8%;background:#58a6ff"></div></div>subagents $434.56 (35.2%)<div class="bar" style="margin:4px 0 0 0"><div class="fill" style="width:35.2%;background:#d29922"></div></div></td><td class="band"><div class="bandtitle">BY SOURCE</div>Claude Code $1,000.00 (81.0%)<div class="bar" style="margin:4px 0 6px 0"><div class="fill" style="width:81.0%;background:#3fb950"></div></div>Desktop (Cowork) $234.56 (19.0%)<div class="bar" style="margin:4px 0 0 0"><div class="fill" style="width:19.0%;background:#a371f7"></div></div></td></tr></tbody></table>
+<table class="grid"><tbody>
+<tr>
+<td><h2>WHERE THE MONEY GOES &middot; ALL TIME</h2><table class="rows"><tr><td>cache read</td><td class="amt">$400.00</td><td class="pct">40.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:40.0%;background:#58a6ff"></div></div></td></tr><tr><td>output</td><td class="amt">$300.00</td><td class="pct">30.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:30.0%;background:#d29922"></div></div></td></tr><tr><td>fresh input</td><td class="amt">$200.00</td><td class="pct">20.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:20.0%;background:#3fb950"></div></div></td></tr><tr><td>cache write</td><td class="amt">$100.00</td><td class="pct">10.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:10.0%;background:#8b949e"></div></div></td></tr></table>
+<div class="note">cache hit rate 62.3%</div></td>
+<td><h2>BY MODEL &middot; ALL TIME</h2><table class="rows"><tr><td>claude-opus-4-8</td><td class="amt">$700.00</td><td class="pct">70.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:70.0%;background:#58a6ff"></div></div></td></tr><tr><td>claude-sonnet-5</td><td class="amt">$300.00</td><td class="pct">30.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:30.0%;background:#d29922"></div></div></td></tr></table>
+<div class="note">avg $2.05/msg &middot;
+$41.15/session</div><div class="note">1 unpriced model(s), counted but not costed: claude-future-9</div></td>
+</tr>
+<tr>
+<td><h2>BY PROJECT &middot; ALL TIME</h2><table class="rows"><tr><td>alpha</td><td class="amt">$600.00</td><td class="pct">60.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:60.0%;background:#58a6ff"></div></div></td></tr><tr><td>beta</td><td class="amt">$400.00</td><td class="pct">40.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:40.0%;background:#d29922"></div></div></td></tr></table></td>
+<td><h2>BY SKILL &middot; ALL TIME</h2><table class="rows"><tr><td>graphify</td><td class="amt">$550.00</td><td class="pct">55.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:55.0%;background:#58a6ff"></div></div></td></tr><tr><td>(none)</td><td class="amt">$450.00</td><td class="pct">45.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:45.0%;background:#d29922"></div></div></td></tr></table></td>
+</tr>
+</tbody></table>
+<table class="grid"><tbody>
+<tr><td><h2>TOP SESSIONS &middot; ALL TIME</h2><table class="rows"><tr><td class="amt">$220.00</td><td style="padding-left:10px">/graphify refactor billing</td></tr><tr><td class="amt">$80.00</td><td style="padding-left:10px">(untitled session)</td></tr></table></td></tr>
+<tr><td><h2>DAILY &middot; LAST 3 DAYS</h2><table class="daily" style="height:44px"><tr><td><div class="col" style="height:17px"></div></td><td><div class="col" style="height:44px"></div></td><td><div class="col" style="height:21px"></div></td></tr></table><div class="dscale">2026-07-28<span style="float:right">2026-07-30 &middot; peak $25.50</span></div></td></tr>
+</tbody></table>
+</body></html>

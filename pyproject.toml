@@ -1,0 +1,16 @@
+[project]
+name = "claude-token-dashboard"
+version = "0.1.0"
+description = "Local dashboard for Claude Code token usage and API-equivalent cost"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Required. Without it pytest puts tests/ on sys.path (that directory has no
+# __init__.py) instead of the repo root, and every `from dashboard import ...`
+# fails with ModuleNotFoundError.
+pythonpath = ["."]

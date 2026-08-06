@@ -1,0 +1,271 @@
+"""Reads Claude Code transcripts. The only module that knows the JSONL shape."""
+
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import NamedTuple
+
+from .models import UsageRecord
+
+WORKTREE_RE = re.compile(r"^(?P<parent>.*?)/\.claude/worktrees/")
+COMMAND_NAME_RE = re.compile(r"<command-name>([^<]+)</command-name>")
+
+DEFAULT_PATTERN = "**/*.jsonl"
+
+#: Bytes of a transcript hashed to decide whether it is the same file we read
+#: last time. Transcripts are append-only, so an unchanged prefix means the
+#: bytes before `offset` cannot have moved and it is safe to resume from it.
+HEAD_BYTES = 4096
+
+
+class FileState(NamedTuple):
+    """What we knew about a transcript after the last pass.
+
+    offset is a byte position at a line boundary — never mid-line, so a
+    transcript caught mid-append resumes cleanly rather than losing the
+    record that was being written.
+    """
+
+    size: int
+    mtime: float
+    offset: int = 0
+    head: str = ""
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    records: list[UsageRecord] = field(default_factory=list)
+    titles: dict[str, str] = field(default_factory=dict)
+    file_stats: dict[str, FileState] = field(default_factory=dict)
+    malformed_lines: int = 0
+    files_read: int = 0
+
+
+def default_projects_dir() -> Path:
+    override = os.environ.get("CLAUDE_PROJECTS_DIR")
+    if override:
+        return Path(override)
+    return Path.home() / ".claude" / "projects"
+
+
+def project_from_cwd(cwd: str | None) -> str:
+    if not cwd:
+        return "(unknown)"
+    matched = WORKTREE_RE.match(cwd)
+    base = matched.group("parent") if matched else cwd
+    return os.path.basename(base.rstrip("/")) or "(root)"
+
+
+def session_title(raw: str) -> str:
+    command = COMMAND_NAME_RE.search(raw)
+    if command:
+        return command.group(1).strip()
+    return " ".join(raw.split())
+
+
+def local_day(ts: str) -> str:
+    """Local calendar date for a UTC transcript timestamp.
+
+    Transcript timestamps are UTC with a Z suffix. Slicing the string would
+    bucket work done after local midnight onto the previous day.
+    """
+    if not ts:
+        return ""
+    try:
+        moment = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    return moment.astimezone().date().isoformat()
+
+
+def _cache_writes(usage: dict) -> tuple[int, int]:
+    nested = usage.get("cache_creation")
+    if isinstance(nested, dict) and (
+        nested.get("ephemeral_5m_input_tokens") or nested.get("ephemeral_1h_input_tokens")
+    ):
+        return (
+            int(nested.get("ephemeral_5m_input_tokens") or 0),
+            int(nested.get("ephemeral_1h_input_tokens") or 0),
+        )
+    return int(usage.get("cache_creation_input_tokens") or 0), 0
+
+
+def _digest(handle, length: int) -> str:
+    """Hash the first `length` bytes. Empty for a zero length."""
+    if length <= 0:
+        return ""
+    handle.seek(0)
+    return hashlib.sha256(handle.read(length)).hexdigest()
+
+
+def _resume_offset(handle, previous: FileState | None, size: int) -> int:
+    """Byte offset to resume this transcript from, or 0 to re-read it whole.
+
+    Resuming is only safe when this is demonstrably the same file, extended.
+    Each way that can fail falls back to a full re-read rather than risk
+    silently skipping records:
+
+    - no previous state, or none carrying an offset (rows written before
+      offsets were recorded have offset 0 and an empty head)
+    - the file is now shorter than the offset, so it was truncated
+    - the bytes we already consumed have changed, so it was rewritten in
+      place rather than appended to
+
+    The digest deliberately spans min(HEAD_BYTES, offset) rather than a
+    fixed HEAD_BYTES: for a transcript still smaller than HEAD_BYTES the
+    fixed prefix *is* the whole file, so every append would change it and
+    no read would ever resume.
+    """
+    if previous is None or previous.offset <= 0 or not previous.head:
+        return 0
+    if size < previous.offset:
+        return 0
+    if _digest(handle, min(HEAD_BYTES, previous.offset)) != previous.head:
+        return 0
+    return previous.offset
+
+
+def scan(
+    projects_dir: Path,
+    skip: dict[str, FileState] | None = None,
+    *,
+    source: str = "code",
+    project_resolver: Callable[[str | None], str] | None = None,
+    pattern: str = DEFAULT_PATTERN,
+) -> ScanResult:
+    """Walk every transcript under projects_dir.
+
+    skip maps a path to the FileState left by the last pass. A file whose
+    size and mtime are unchanged is not reopened at all. A file that has
+    only grown is resumed from its recorded offset rather than re-parsed
+    from the top — the active session's transcript is rewritten-by-append
+    on every message, and re-reading it whole was the single largest cost
+    in a warm refresh.
+
+    source stamps every record with the Claude surface it came from.
+    project_resolver overrides how a record's cwd becomes a project label:
+    Cowork sessions all run in a per-session `outputs` directory, so the
+    default basename rule would file every one of them under "outputs".
+    pattern narrows the walk; Cowork's per-session `.claude` trees mean the
+    default recursive glob visits hundreds of directories per session to
+    find a handful of transcripts.
+    """
+    skip = skip or {}
+    resolve_project = project_resolver or project_from_cwd
+    records: list[UsageRecord] = []
+    titles: dict[str, str] = {}
+    stats: dict[str, FileState] = {}
+    seen_ids: set[str] = set()
+    malformed = 0
+    files_read = 0
+
+    # Recursive: subagent transcripts live at <project>/<session>/subagents/,
+    # and workflow agents deeper still under subagents/workflows/wf_<id>/.
+    for path in sorted(Path(projects_dir).glob(pattern)):
+        key = str(path)
+        try:
+            info = path.stat()
+        except OSError:
+            continue
+        previous = skip.get(key)
+        if previous is not None and (previous.size, previous.mtime) == (
+            info.st_size,
+            info.st_mtime,
+        ):
+            stats[key] = previous
+            continue
+        files_read += 1
+
+        try:
+            handle = path.open("rb")
+        except OSError:
+            # Deliberately no stats[key] here: recording a file as ingested
+            # before it was successfully read would mark it done forever.
+            continue
+        with handle:
+            start = _resume_offset(handle, previous, info.st_size)
+            handle.seek(start)
+            chunk = handle.read()
+
+            # Only whole lines: a transcript caught mid-append ends in a
+            # partial line, and consuming it would both miss that record
+            # and leave the offset mid-line for the next pass.
+            end = chunk.rfind(b"\n") + 1
+            head = _digest(handle, min(HEAD_BYTES, start + end))
+        for raw in chunk[:end].split(b"\n"):
+            if not raw.strip():
+                continue
+            try:
+                entry = json.loads(raw.decode("utf-8", "replace"))
+            except ValueError:
+                malformed += 1
+                continue
+            if not isinstance(entry, dict):
+                malformed += 1
+                continue
+
+            session_id = entry.get("sessionId") or entry.get("session_id") or ""
+            kind = entry.get("type")
+
+            if kind == "user" and not entry.get("isMeta") and session_id not in titles:
+                # Only when reading from the top: resuming mid-file, the
+                # first user message we see is not the session's first, and
+                # emitting it would overwrite a correct stored title.
+                if start == 0:
+                    content = (entry.get("message") or {}).get("content")
+                    if isinstance(content, str) and content.strip():
+                        titles[session_id] = session_title(content)
+                continue
+
+            if kind != "assistant":
+                continue
+            message = entry.get("message") or {}
+            usage = message.get("usage")
+            if not isinstance(usage, dict) or not usage:
+                continue
+            message_id = message.get("id")
+            if not message_id or message_id in seen_ids:
+                continue
+            seen_ids.add(message_id)
+
+            write_5m, write_1h = _cache_writes(usage)
+            ts = entry.get("timestamp") or ""
+            records.append(
+                UsageRecord(
+                    message_id=message_id,
+                    ts=ts,
+                    day=local_day(ts),
+                    model=message.get("model") or "(unknown)",
+                    project=resolve_project(entry.get("cwd")),
+                    skill=str(entry.get("attributionSkill") or "(none)"),
+                    session_id=session_id,
+                    input_tokens=int(usage.get("input_tokens") or 0),
+                    output_tokens=int(usage.get("output_tokens") or 0),
+                    cache_read_tokens=int(usage.get("cache_read_input_tokens") or 0),
+                    cache_write_5m=write_5m,
+                    cache_write_1h=write_1h,
+                    speed=usage.get("speed"),
+                    is_subagent=bool(entry.get("isSidechain")),
+                    source=source,
+                )
+            )
+        stats[key] = FileState(
+            size=info.st_size, mtime=info.st_mtime, offset=start + end, head=head
+        )
+
+    return ScanResult(
+        records=records,
+        titles=titles,
+        file_stats=stats,
+        malformed_lines=malformed,
+        files_read=files_read,
+    )

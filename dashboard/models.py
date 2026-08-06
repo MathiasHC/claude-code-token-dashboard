@@ -1,0 +1,133 @@
+"""Shared data types. No logic lives here."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import NamedTuple
+
+
+class UsageRecord(NamedTuple):
+    """One assistant message's token usage, normalised out of a transcript.
+
+    A NamedTuple rather than a frozen dataclass purely for construction
+    speed: the store rebuilds one of these per row on every refresh, and a
+    frozen dataclass's __init__ (an object.__setattr__ per field) measured
+    ~7x slower over a real history. Same immutability, same keyword
+    construction; use ._replace() where you would reach for
+    dataclasses.replace().
+    """
+
+    message_id: str
+    ts: str
+    day: str
+    model: str
+    project: str
+    skill: str
+    session_id: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_5m: int = 0
+    cache_write_1h: int = 0
+    speed: str | None = None
+    is_subagent: bool = False
+    #: Which Claude surface produced this message — see aggregate.SOURCE_LABELS.
+    #: "code" is the default so records predating the multi-source scan, and
+    #: every existing row in an old database, read back as Claude Code.
+    source: str = "code"
+
+
+@dataclass(frozen=True)
+class CostBreakdown:
+    fresh_input: float = 0.0
+    cache_read: float = 0.0
+    cache_write: float = 0.0
+    output: float = 0.0
+
+    @property
+    def total(self) -> float:
+        return self.fresh_input + self.cache_read + self.cache_write + self.output
+
+
+@dataclass(frozen=True)
+class Bar:
+    """One labelled row in a breakdown panel."""
+
+    label: str
+    cost: float
+    share: float
+
+
+@dataclass(frozen=True)
+class Window:
+    label: str
+    cost: float
+    messages: int
+
+
+@dataclass(frozen=True)
+class DayCost:
+    day: str
+    cost: float
+
+
+@dataclass(frozen=True)
+class DashboardData:
+    generated_at: str
+    today: Window
+    last_7_days: Window
+    month_to_date: Window
+    all_time: Window
+    active_days: int
+    max_plan_monthly_usd: float
+    prev_month_label: str
+    prev_month_cost: float
+    yesterday_cost: float = 0.0
+    prior_7_days_cost: float = 0.0
+    prev_month_to_date_cost: float = 0.0
+    money: list[Bar] = field(default_factory=list)
+    by_model: list[Bar] = field(default_factory=list)
+    by_project: list[Bar] = field(default_factory=list)
+    by_skill: list[Bar] = field(default_factory=list)
+    top_sessions: list[Bar] = field(default_factory=list)
+    daily: list[DayCost] = field(default_factory=list)
+    cache_hit_rate: float = 0.0
+    avg_cost_per_message: float = 0.0
+    avg_cost_per_session: float = 0.0
+    unpriced_models: list[str] = field(default_factory=list)
+    main_cost: float = 0.0
+    subagent_cost: float = 0.0
+    by_source: list[Bar] = field(default_factory=list)
+
+    @property
+    def subagent_share(self) -> float:
+        total = self.main_cost + self.subagent_cost
+        return self.subagent_cost / total if total else 0.0
+
+    @property
+    def effective_multiple(self) -> float:
+        if self.max_plan_monthly_usd <= 0:
+            return 0.0
+        return self.month_to_date.cost / self.max_plan_monthly_usd
+
+    @property
+    def day_change(self) -> float | None:
+        """Today vs yesterday, as a fraction, or None if no prior-day data."""
+        if self.yesterday_cost <= 0:
+            return None
+        return (self.today.cost - self.yesterday_cost) / self.yesterday_cost
+
+    @property
+    def week_change(self) -> float | None:
+        """Last 7 days vs the 7 days before that, or None if no prior-week data."""
+        if self.prior_7_days_cost <= 0:
+            return None
+        return (self.last_7_days.cost - self.prior_7_days_cost) / self.prior_7_days_cost
+
+    @property
+    def month_change(self) -> float | None:
+        """Month-to-date vs the same number of days into the previous month,
+        or None if there is no prior like-for-like data."""
+        if self.prev_month_to_date_cost <= 0:
+            return None
+        return (self.month_to_date.cost - self.prev_month_to_date_cost) / self.prev_month_to_date_cost
