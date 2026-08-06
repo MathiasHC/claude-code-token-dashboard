@@ -1,5 +1,7 @@
 # Claude Code Token Dashboard
 
+[![tests](https://github.com/MathiasHC/claude-code-token-dashboard/actions/workflows/tests.yml/badge.svg)](https://github.com/MathiasHC/claude-code-token-dashboard/actions/workflows/tests.yml)
+
 A self-hosted dashboard for **Claude Code token usage and cost**. It reads the
 transcripts Claude Code already writes on your own machine, shows what you
 spent tokens on, and works out what that usage *would* have cost at Claude API
