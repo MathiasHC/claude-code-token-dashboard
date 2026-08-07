@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import http.client
 import os
 import socket
@@ -299,3 +300,63 @@ def test_served_page_omits_cowork_when_the_directory_is_absent(tmp_path):
 def test_cowork_project_labels_reach_the_served_page(tmp_path):
     page = make_app(tmp_path, cowork_dir=COWORK_FIXTURES).page()
     assert "gamma" in page
+
+
+# --- bind failures ------------------------------------------------------
+# Unhandled, these reach the user as a socket traceback ending in
+# `self.socket.bind(...)`. The most likely cause — the dashboard is already
+# running — is entirely recoverable, so it must read as an instruction.
+
+class _Handler(web.BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):  # pragma: no cover - silence
+        return
+
+
+def test_binding_a_busy_port_exits_with_an_instruction_not_a_traceback():
+    """The real-world case: run it twice. The second run must say what to do."""
+    occupied = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    occupied.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    occupied.bind(("127.0.0.1", 0))
+    occupied.listen(1)
+    port = occupied.getsockname()[1]
+    try:
+        with pytest.raises(SystemExit) as caught:
+            web.bind("127.0.0.1", port, _Handler)
+    finally:
+        occupied.close()
+
+    message = str(caught.value)
+    assert "already in use" in message
+    assert str(port) in message
+    assert "--port" in message, "should suggest a way out, not just name the fault"
+    assert "Traceback" not in message
+
+
+def test_bind_message_explains_a_privileged_port():
+    error = OSError(errno.EACCES, "Permission denied")
+    message = web.bind_message("0.0.0.0", 80, error)
+    assert "below 1024" in message
+    assert str(web.DEFAULT_PORT) in message
+
+
+def test_bind_message_explains_an_unavailable_address():
+    error = OSError(errno.EADDRNOTAVAIL, "Can't assign requested address")
+    message = web.bind_message("10.9.9.9", 8420, error)
+    assert "10.9.9.9" in message
+    assert "--host" in message
+
+
+def test_bind_message_falls_back_without_swallowing_the_cause():
+    """An errno we haven't special-cased must still surface the OS text."""
+    error = OSError(errno.ENOBUFS, "No buffer space available")
+    message = web.bind_message("0.0.0.0", 8420, error)
+    assert "No buffer space available" in message
+    assert "0.0.0.0:8420" in message
+
+
+def test_a_successful_bind_returns_a_usable_server():
+    server = web.bind("127.0.0.1", 0, _Handler)
+    try:
+        assert server.server_address[1] > 0
+    finally:
+        server.server_close()
