@@ -312,12 +312,18 @@ and cards would give no hint they can be clicked. Links work on every browser
 ever shipped, and the current one is marked server-side rather than with
 `:hover`.
 
-**A selected range is temporary by design.** The auto-refresh returns to
-`ALL TIME`, so an always-on display always comes back to the same glanceable
-screen instead of sitting on whatever someone chose an hour ago. In practice
-you get one refresh interval (30s by default) to read a range before it
-resets — long enough to look, short enough that the wall display stays
-predictable. Raise `--refresh` if you want longer.
+**A selected range sticks.** The page auto-refreshes in place, so the data
+updates on its usual interval while the range you chose stays put. Click
+`ALL TIME` to go back.
+
+This was the other way round at first — the refresh returned to `ALL TIME` on
+the theory that a wall display should always show one glanceable screen. It
+reset the selection roughly every 30 seconds, which made a range impossible to
+actually read.
+
+The trade-off is worth knowing: a wall display left on `TODAY` will stay on
+`TODAY` indefinitely. Nothing puts it back except a click on `ALL TIME`, or
+reopening the bare URL.
 
 ## What the numbers mean
 

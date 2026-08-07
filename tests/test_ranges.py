@@ -159,13 +159,20 @@ def test_the_default_view_refreshes_in_place():
     assert 'content="30"' in out
 
 
-def test_a_selected_range_refreshes_back_to_the_default():
-    """The wall display must return to the same glanceable screen rather than
-    sitting on whatever someone clicked an hour ago."""
+@pytest.mark.parametrize("key", [r.key for r in ranges.CATALOGUE])
+def test_a_selected_range_survives_the_refresh(key):
+    """The refresh must reload the current URL, query string and all.
+
+    Sending it to a fixed URL instead resets the selection roughly every 30
+    seconds, which is what the first version did and what made the feature
+    unusable in practice: you cannot read a range that keeps vanishing.
+    A bare content="N" reloads whatever is in the address bar.
+    """
     out = render_html.render(
-        aggregate.build(SPREAD, {}, now=NOW, range_key="today"), base_path="/d/tok"
+        aggregate.build(SPREAD, {}, now=NOW, range_key=key), base_path="/d/tok"
     )
-    assert 'content="30; url=/d/tok"' in out
+    assert 'content="30"' in out
+    assert "url=" not in out.split("</head>")[0], "the refresh must not navigate away"
 
 
 def test_the_selector_survives_the_ios5_lint():
@@ -178,12 +185,19 @@ def test_the_selector_survives_the_ios5_lint():
 
 # --- refresh interval -------------------------------------------------------
 
-def test_the_refresh_interval_controls_how_long_a_range_stays_up():
-    """The reset-to-default behaviour makes this the knob that decides how
-    long you get to read a selected range."""
+def test_the_refresh_interval_is_honoured_on_a_selected_range():
     out = render_html.render(
         aggregate.build(SPREAD, {}, now=NOW, range_key="7d"),
         base_path="/d/tok",
         refresh_seconds=120,
     )
-    assert 'content="120; url=/d/tok"' in out
+    assert 'content="120"' in out
+
+
+def test_returning_to_the_default_is_always_one_click_away():
+    """With the selection now sticky, the ALL TIME link is the only way back —
+    it must be present and must point at the bare URL."""
+    out = render_html.render(
+        aggregate.build(SPREAD, {}, now=NOW, range_key="today"), base_path="/d/tok"
+    )
+    assert 'href="/d/tok"' in out

@@ -242,16 +242,19 @@ def _plan_comparison(data: DashboardData) -> str:
     )
 
 
-def _refresh_content(data: DashboardData, seconds: int, base_path: str) -> str:
-    """Where the auto-refresh goes.
+def _refresh_content(seconds: int) -> str:
+    """How the page reloads itself.
 
-    On the default view it just reloads. On a selected range it navigates
-    back to the default, so an always-on display always returns to the same
-    glanceable screen instead of holding whatever someone last clicked.
+    A bare `content="30"` reloads the *current* URL, query string included,
+    so a selected range survives every refresh — this is the whole mechanism.
+
+    An earlier version pointed the refresh back at the default view, on the
+    theory that an always-on display should keep returning to one glanceable
+    screen. In use that pulled the selection out from under anyone reading a
+    range, which made the feature close to unusable. A range now sticks until
+    something else is clicked.
     """
-    if data.range_key == ranges.DEFAULT.key:
-        return str(seconds)
-    return f"{seconds}; url={escape(base_path or '.', quote=True)}"
+    return str(seconds)
 
 
 def _range_selector(data: DashboardData, base_path: str) -> str:
@@ -296,7 +299,7 @@ def render(
     return f"""<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="{_refresh_content(data, refresh_seconds, base_path)}">
+<meta http-equiv="refresh" content="{_refresh_content(refresh_seconds)}">
 <meta name="viewport" content="width=1024, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
