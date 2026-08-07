@@ -13,6 +13,17 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0", help="bind address (default: all interfaces)")
     parser.add_argument("--port", type=int, default=web.DEFAULT_PORT)
     parser.add_argument(
+        "--refresh",
+        type=int,
+        default=web.DEFAULT_REFRESH_SECONDS,
+        metavar="SECONDS",
+        help=(
+            "how often the page reloads (default "
+            f"{web.DEFAULT_REFRESH_SECONDS}). Also how long a selected date "
+            "range stays on screen before returning to the default view."
+        ),
+    )
+    parser.add_argument(
         "--plan",
         metavar="PLAN",
         help=(
@@ -30,7 +41,9 @@ def main() -> None:
         parser.error(str(error))
         return  # unreachable; parser.error exits
 
-    web.serve(host=args.host, port=args.port, plan=plan)
+    if args.refresh < 1:
+        parser.error("--refresh must be at least 1 second")
+    web.serve(host=args.host, port=args.port, plan=plan, refresh_seconds=args.refresh)
 
 
 if __name__ == "__main__":

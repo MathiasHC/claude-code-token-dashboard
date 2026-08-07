@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from html import escape
 
+from . import ranges
 from .models import Bar, DashboardData
 
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
@@ -39,6 +40,13 @@ table.hero td { vertical-align:top; }
 /* border-spacing matches table.grid so the bands line up with the panels
    below them; margin-bottom keeps the vertical rhythm the single full-width
    delegation band used to have. */
+table.ranges { width:100%; table-layout:fixed; border-collapse:separate;
+               border-spacing:6px 0; margin:0 0 6px 0; }
+td.rangecell { padding:0; }
+a.range { display:block; background:#161b22; border:1px solid #30363d;
+          padding:5px 0; text-align:center; font-size:11px; letter-spacing:1.5px;
+          color:#8b949e; }
+a.range.on { background:#1f6feb; border-color:#1f6feb; color:#ffffff; }
 table.bands { width:100%; table-layout:fixed; border-collapse:separate;
               border-spacing:6px 0; margin:0 0 8px 0; }
 td.band { background:#161b22; border:1px solid #30363d; padding:7px 10px;
@@ -234,7 +242,48 @@ def _plan_comparison(data: DashboardData) -> str:
     )
 
 
-def render(data: DashboardData, *, warning: str | None = None, refresh_seconds: int = 30) -> str:
+def _refresh_content(seconds: int) -> str:
+    """How the page reloads itself.
+
+    A bare `content="30"` reloads the *current* URL, query string included,
+    so a selected range survives every refresh — this is the whole mechanism.
+
+    An earlier version pointed the refresh back at the default view, on the
+    theory that an always-on display should keep returning to one glanceable
+    screen. In use that pulled the selection out from under anyone reading a
+    range, which made the feature close to unusable. A range now sticks until
+    something else is clicked.
+    """
+    return str(seconds)
+
+
+def _range_selector(data: DashboardData, base_path: str) -> str:
+    """A row of ordinary links, one per range.
+
+    Deliberately anchors rather than a <select> or clickable cards: this page
+    carries no JavaScript, so a dropdown would need a visible submit button
+    and cards would give no affordance that they are clickable. Links are
+    understood by every browser ever shipped, and the current one is marked
+    server-side rather than with :hover or :focus styling.
+    """
+    cells = []
+    for entry in ranges.CATALOGUE:
+        current = " on" if entry.key == data.range_key else ""
+        href = base_path if entry.key == ranges.DEFAULT.key else f"{base_path}?range={entry.key}"
+        cells.append(
+            f'<td class="rangecell">'
+            f'<a class="range{current}" href="{escape(href)}">{escape(entry.label)}</a></td>'
+        )
+    return f'<table class="ranges"><tbody><tr>{"".join(cells)}</tr></tbody></table>'
+
+
+def render(
+    data: DashboardData,
+    *,
+    warning: str | None = None,
+    refresh_seconds: int = 30,
+    base_path: str = "",
+) -> str:
     banner = f'<div class="warn">{escape(warning)}</div>' if warning else ""
 
     unpriced = ""
@@ -250,7 +299,7 @@ def render(data: DashboardData, *, warning: str | None = None, refresh_seconds: 
     return f"""<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="{refresh_seconds}">
+<meta http-equiv="refresh" content="{_refresh_content(refresh_seconds)}">
 <meta name="viewport" content="width=1024, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -271,21 +320,22 @@ def render(data: DashboardData, *, warning: str | None = None, refresh_seconds: 
 {_plan_comparison(data)}
 </div>
 {_bands(data)}
+{_range_selector(data, base_path)}
 <table class="grid"><tbody>
 <tr>
-<td><h2>WHERE THE MONEY GOES &middot; ALL TIME</h2>{_rows(data.money)}
+<td><h2>WHERE THE MONEY GOES &middot; {escape(data.range_label)}</h2>{_rows(data.money)}
 <div class="note">cache hit rate {_pct(data.cache_hit_rate)}</div></td>
-<td><h2>BY MODEL &middot; ALL TIME</h2>{_rows(data.by_model)}
+<td><h2>BY MODEL &middot; {escape(data.range_label)}</h2>{_rows(data.by_model)}
 <div class="note">avg {_money(data.avg_cost_per_message)}/msg &middot;
 {_money(data.avg_cost_per_session)}/session</div>{unpriced}</td>
 </tr>
 <tr>
-<td><h2>BY PROJECT &middot; ALL TIME</h2>{_rows(data.by_project)}</td>
-<td><h2>BY SKILL &middot; ALL TIME</h2>{_rows(data.by_skill)}</td>
+<td><h2>BY PROJECT &middot; {escape(data.range_label)}</h2>{_rows(data.by_project)}</td>
+<td><h2>BY SKILL &middot; {escape(data.range_label)}</h2>{_rows(data.by_skill)}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
-<tr><td><h2>TOP SESSIONS &middot; ALL TIME</h2>{_session_rows(data.top_sessions)}</td></tr>
+<tr><td><h2>TOP SESSIONS &middot; {escape(data.range_label)}</h2>{_session_rows(data.top_sessions)}</td></tr>
 <tr><td><h2>DAILY &middot; LAST {len(data.daily)} DAYS</h2>{_daily(data)}</td></tr>
 </tbody></table>
 </body></html>

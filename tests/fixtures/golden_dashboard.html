@@ -29,6 +29,13 @@ table.hero td { vertical-align:top; }
 /* border-spacing matches table.grid so the bands line up with the panels
    below them; margin-bottom keeps the vertical rhythm the single full-width
    delegation band used to have. */
+table.ranges { width:100%; table-layout:fixed; border-collapse:separate;
+               border-spacing:6px 0; margin:0 0 6px 0; }
+td.rangecell { padding:0; }
+a.range { display:block; background:#161b22; border:1px solid #30363d;
+          padding:5px 0; text-align:center; font-size:11px; letter-spacing:1.5px;
+          color:#8b949e; }
+a.range.on { background:#1f6feb; border-color:#1f6feb; color:#ffffff; }
 table.bands { width:100%; table-layout:fixed; border-collapse:separate;
               border-spacing:6px 0; margin:0 0 8px 0; }
 td.band { background:#161b22; border:1px solid #30363d; padding:7px 10px;
@@ -66,6 +73,7 @@ table.daily td { vertical-align:bottom; text-align:center; padding:0 1px; }
 vs Max 20× &nbsp; $89.01 api-equivalent / $200.00 actual = <span class="mult">0.4&times;</span> effective
 </div>
 <table class="bands"><tbody><tr><td class="band"><div class="bandtitle">DELEGATION</div>main $800.00 (64.8%)<div class="bar" style="margin:4px 0 6px 0"><div class="fill" style="width:64.8%;background:#58a6ff"></div></div>subagents $434.56 (35.2%)<div class="bar" style="margin:4px 0 0 0"><div class="fill" style="width:35.2%;background:#d29922"></div></div></td><td class="band"><div class="bandtitle">BY SOURCE</div>Claude Code $1,000.00 (81.0%)<div class="bar" style="margin:4px 0 6px 0"><div class="fill" style="width:81.0%;background:#3fb950"></div></div>Desktop (Cowork) $234.56 (19.0%)<div class="bar" style="margin:4px 0 0 0"><div class="fill" style="width:19.0%;background:#a371f7"></div></div></td></tr></tbody></table>
+<table class="ranges"><tbody><tr><td class="rangecell"><a class="range" href="?range=today">TODAY</a></td><td class="rangecell"><a class="range" href="?range=7d">7 DAYS</a></td><td class="rangecell"><a class="range" href="?range=30d">30 DAYS</a></td><td class="rangecell"><a class="range" href="?range=month">MONTH</a></td><td class="rangecell"><a class="range on" href="">ALL TIME</a></td></tr></tbody></table>
 <table class="grid"><tbody>
 <tr>
 <td><h2>WHERE THE MONEY GOES &middot; ALL TIME</h2><table class="rows"><tr><td>cache read</td><td class="amt">$400.00</td><td class="pct">40.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:40.0%;background:#58a6ff"></div></div></td></tr><tr><td>output</td><td class="amt">$300.00</td><td class="pct">30.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:30.0%;background:#d29922"></div></div></td></tr><tr><td>fresh input</td><td class="amt">$200.00</td><td class="pct">20.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:20.0%;background:#3fb950"></div></div></td></tr><tr><td>cache write</td><td class="amt">$100.00</td><td class="pct">10.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:10.0%;background:#8b949e"></div></div></td></tr></table>

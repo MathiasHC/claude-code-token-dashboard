@@ -52,6 +52,7 @@ dashboard/
   aggregate.py    records -> DashboardData (pure; `now` is injected)
   pricing.py      model rate table and cost arithmetic (pure)
   plans.py        which subscription to compare against
+  ranges.py       which slice of history the breakdown panels cover
   render_html.py  DashboardData -> one HTML document (pure)
   web.py          stdlib http.server, LAN-bound, token-gated
 tools/demo_page.py  render synthetic demo data (used for the README screenshot)
@@ -67,6 +68,14 @@ tools/demo_page.py  render synthetic demo data (used for the README screenshot)
   is the markup, not the test.
 - **`aggregate.build` and `render_html.render` are pure.** No clock reads, no
   I/O. `now` is a parameter so windows are testable.
+- **Interaction happens through links, not scripts.** Date-range selection is
+  `?range=…` with a server-rendered "current" state, because the no-JavaScript
+  rule rules out dropdowns that submit on change and cards that need `:hover`
+  to look clickable. Anything interactive added later has to work the same way.
+- **The hero row is global.** Today / 7 days / MTD / all-time and their deltas
+  never follow the selected range — only the panels below them do. A summary
+  that disagreed with its own panels would be worse than no ranges at all,
+  and a test pins it.
 - **Never assert against a real `~/.claude` tree in tests** — its totals change
   with every message. Fixtures live in `tests/fixtures/`. The one live check is
   opt-in (`DASHBOARD_LIVE_SMOKE=1`) and asserts shape only.

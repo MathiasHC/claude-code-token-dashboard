@@ -6,7 +6,7 @@ import calendar
 import datetime as dt
 from collections import Counter, defaultdict
 
-from . import pricing
+from . import pricing, ranges
 from .models import Bar, DashboardData, DayCost, UsageRecord, Window
 
 UNTITLED = "(untitled session)"
@@ -41,6 +41,7 @@ def build(
     now: dt.datetime,
     max_plan_monthly_usd: float = pricing.MAX_PLAN_MONTHLY_USD,
     plan_label: str = "Max 20×",
+    range_key: str | None = None,
     daily_days: int = 30,
     top_n: int = 5,
 ) -> DashboardData:
@@ -98,6 +99,9 @@ def build(
     # whole history seven times and re-parses every record's date in each,
     # which on real data was ~90_000 fromisoformat calls to answer questions
     # about 42 distinct days.
+    selected = ranges.resolve(range_key)
+    in_selected_range = ranges.contains(selected, now)
+
     windows = ("today", "week", "month", "prev_month", "yesterday", "prior_7", "prev_mtd")
     membership = {
         day: (
@@ -111,6 +115,9 @@ def build(
         )
         for day in {r.day for r in dated}
     }
+    # Scoping is one more per-day lookup rather than a second filtering
+    # pass over the history.
+    scoped_days = {day for day in membership if in_selected_range(day)}
     bucket_cost = dict.fromkeys(windows, 0.0)
     bucket_count = dict.fromkeys(windows, 0)
 
@@ -123,12 +130,33 @@ def build(
     per_day: dict[str, float] = defaultdict(float)
     main_cost = subagent_cost = 0.0
     reads = fresh = 0
+    # All-time totals stay global no matter what range is selected: the
+    # hero row is the fixed summary, and only the panels below it move.
+    all_time_cost = 0.0
+    all_time_messages = 0
+    active = set()
+    scoped_total = 0.0
+    scoped_messages = 0
 
     # One pass. Every total on the page is accumulated here rather than by a
     # separate comprehension per figure, each of which was another full walk
     # of the history.
     for record in dated:
         value = costs[record.message_id]
+
+        # Global, always: the hero row and its deltas do not follow the range.
+        all_time_cost += value
+        all_time_messages += 1
+        active.add(record.day)
+        for name, inside in zip(windows, membership[record.day]):
+            if inside:
+                bucket_cost[name] += value
+                bucket_count[name] += 1
+
+        if record.day not in scoped_days:
+            continue
+
+        # Everything from here down is what the selected range re-scopes.
         parts = parts_by_id[record.message_id]
         breakdown["cache read"] += parts.cache_read
         breakdown["cache write"] += parts.cache_write
@@ -148,13 +176,12 @@ def build(
             main_cost += value
         reads += record.cache_read_tokens
         fresh += record.input_tokens
+        scoped_total += value
+        scoped_messages += 1
 
-        for name, inside in zip(windows, membership[record.day]):
-            if inside:
-                bucket_cost[name] += value
-                bucket_count[name] += 1
-
-    grand_total = sum(breakdown.values())
+    # Shares are within the selected range, so a panel's percentages always
+    # add up to what that panel is showing.
+    grand_total = scoped_total
     recent_days = sorted(per_day)[-daily_days:]
 
     session_bars = [
@@ -171,8 +198,8 @@ def build(
         today=_window("today", bucket_cost["today"], bucket_count["today"]),
         last_7_days=_window("7 days", bucket_cost["week"], bucket_count["week"]),
         month_to_date=_window("month to date", bucket_cost["month"], bucket_count["month"]),
-        all_time=_window("all time", grand_total, len(dated)),
-        active_days=len(per_day),
+        all_time=_window("all time", all_time_cost, all_time_messages),
+        active_days=len(active),
         max_plan_monthly_usd=max_plan_monthly_usd,
         plan_label=plan_label,
         prev_month_label=prev_month_label,
@@ -187,9 +214,11 @@ def build(
         top_sessions=session_bars,
         daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
         cache_hit_rate=(reads / (reads + fresh) if (reads + fresh) else 0.0),
-        avg_cost_per_message=(grand_total / len(dated) if dated else 0.0),
+        avg_cost_per_message=(grand_total / scoped_messages if scoped_messages else 0.0),
         avg_cost_per_session=(grand_total / len(by_session) if by_session else 0.0),
         unpriced_models=sorted({r.model for r in dated if not pricing.is_priced(r.model)}),
+        range_key=selected.key,
+        range_label=selected.panel_label,
         main_cost=main_cost,
         subagent_cost=subagent_cost,
         # Every surface, not a top-N: a source that has been dropped off the

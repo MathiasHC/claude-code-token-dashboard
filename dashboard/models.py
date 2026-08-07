@@ -86,6 +86,10 @@ class DashboardData:
     #: so the band says what it is comparing against, rather than hard-coding
     #: one subscription tier into the markup.
     plan_label: str = "Max 20×"
+    #: Which slice of history the breakdown panels below the hero row cover.
+    #: The hero row itself is always the same four windows.
+    range_key: str = "all"
+    range_label: str = "ALL TIME"
     yesterday_cost: float = 0.0
     prior_7_days_cost: float = 0.0
     prev_month_to_date_cost: float = 0.0
