@@ -360,3 +360,75 @@ def test_a_successful_bind_returns_a_usable_server():
         assert server.server_address[1] > 0
     finally:
         server.server_close()
+
+
+# --- range selection over HTTP ------------------------------------------
+
+def test_query_string_selects_the_range(tmp_path):
+    page = make_app(tmp_path).page("7d")
+    assert "LAST 7 DAYS" in page
+
+
+def test_an_unknown_range_serves_the_default_rather_than_erroring(tmp_path):
+    """A stale bookmark must not produce a 500 or an error page."""
+    page = make_app(tmp_path).page("last-tuesday")
+    assert page.startswith("<!DOCTYPE html>")
+    assert "ALL TIME" in page
+
+
+def test_switching_range_does_not_wait_out_the_ingest_throttle(tmp_path):
+    """Clicking a range is an interaction — it must repaint now, not in ten
+    seconds — but it must not trigger a fresh scan either."""
+    app = make_app(tmp_path, min_ingest_interval=10_000.0)
+    app.page()
+    assert app.ingest_count == 1
+    other = app.page("today")
+    assert "TODAY" in other
+    assert app.ingest_count == 1, "switching range should not re-scan"
+
+
+def test_each_range_is_cached_separately(tmp_path):
+    app = make_app(tmp_path, min_ingest_interval=10_000.0)
+    first = app.page("7d")
+    assert app.page("7d") is first, "the same range should serve from cache"
+    assert app.page("30d") is not first
+
+
+def test_an_ingest_invalidates_every_cached_range(tmp_path):
+    """Stale ranges are worse than slow ones: after new rows land, a cached
+    page for another range would show figures that no longer add up."""
+    ticks = iter([0.0, 1.0, 2.0, 100.0, 101.0, 102.0, 103.0])
+    app = make_app(tmp_path, clock=lambda: next(ticks), min_ingest_interval=10.0)
+    app.page("7d")
+    cached = app.page("7d")
+    app.page("30d")
+    app.page("7d")  # clock jumps past the throttle -> re-ingest, cache cleared
+    assert app.ingest_count == 2
+    assert app.page("7d") is not cached
+
+
+def test_the_token_is_still_required_when_a_range_is_supplied(server):
+    """The query string must not become a way around the token check."""
+    status, _, _ = get(server, "/d/wrong-token?range=7d")
+    assert status == 404
+
+
+def test_a_range_is_served_over_http(server):
+    status, _, body = get(server, "/d/tok123?range=today")
+    assert status == 200
+    assert "TODAY" in body
+
+
+@pytest.mark.parametrize(
+    "query", ["?range=", "?range=7d&range=30d", "?foo=bar", "?=", "?range=%zz", "?"]
+)
+def test_a_junk_query_string_does_not_break_routing(server, query):
+    """parse_qs is lenient about malformed input; the handler must be too —
+    these are stale links and crawlers, not something to 500 over."""
+    status, _, _ = get(server, f"/d/tok123{query}")
+    assert status == 200
+
+
+def test_the_refresh_interval_reaches_the_page(tmp_path):
+    page = make_app(tmp_path, refresh_seconds=90).page()
+    assert 'content="90"' in page

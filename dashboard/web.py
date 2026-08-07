@@ -11,11 +11,13 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
-from . import aggregate, cowork, ingest, plans, render_html, scan, store
+from . import aggregate, cowork, ingest, plans, ranges, render_html, scan, store
 
 DEFAULT_PORT = 8420
 DEFAULT_MIN_INGEST_INTERVAL = 10.0
+DEFAULT_REFRESH_SECONDS = 30
 
 
 def load_or_create_token(directory: Path) -> str:
@@ -72,7 +74,9 @@ class App:
         *,
         token: str,
         cowork_dir: Path | None = None,
+        base_path: str = "",
         plan: plans.Plan | None = None,
+        refresh_seconds: int = DEFAULT_REFRESH_SECONDS,
         min_ingest_interval: float = DEFAULT_MIN_INGEST_INTERVAL,
         clock=time.monotonic,
         now=dt.datetime.now,
@@ -83,12 +87,20 @@ class App:
         # Never resolved here: resolve() can prompt, and App is constructed
         # inside a request path in tests. The CLI settles the plan up front.
         self.plan = plan or plans.DEFAULT
+        # Prefix the range links point at, e.g. /d/<token>. Empty in tests,
+        # where relative links are fine.
+        self.base_path = base_path
+        # Also how long a selected range stays on screen before the page
+        # returns to the default view.
+        self.refresh_seconds = refresh_seconds
         self.token = token
         self.min_ingest_interval = min_ingest_interval
         self._clock = clock
         self._now = now
         self._last_ingest_at: float | None = None
-        self._last_page: str | None = None
+        # One rendered page per range. Cleared whenever an ingest lands,
+        # because every range's numbers move when new rows arrive.
+        self._pages: dict[str, str] = {}
         self._last_success_at: dt.datetime | None = None
         self.ingest_count = 0
         # Guards the check-then-act in page(): _due() and the ingest that
@@ -111,46 +123,73 @@ class App:
             return True
         return (self._clock() - self._last_ingest_at) >= self.min_ingest_interval
 
-    def page(self) -> str:
+    def _render(self, records, titles, selected, warning=None) -> str:
+        data = aggregate.build(
+            records,
+            titles,
+            now=self._now(),
+            max_plan_monthly_usd=self.plan.monthly_usd,
+            plan_label=self.plan.label,
+            range_key=selected.key,
+        )
+        return render_html.render(
+            data,
+            warning=warning,
+            base_path=self.base_path,
+            refresh_seconds=self.refresh_seconds,
+        )
+
+    def page(self, range_key: str | None = None) -> str:
         # Whole method under the lock: the _due() check and the ingest it
         # gates must be atomic across threads. See the note on self._lock.
+        selected = ranges.resolve(range_key)
         with self._lock:
-            warning: str | None = None
             if self._due():
                 try:
                     with store.Store(self.db_path) as db:
                         result = self._scan(self.projects_dir, db.file_stats())
                         db.ingest(result)
-                        data = aggregate.build(
-                            db.records(),
-                            db.titles(),
-                            now=self._now(),
-                            max_plan_monthly_usd=self.plan.monthly_usd,
-                            plan_label=self.plan.label,
-                        )
+                        records, titles = db.records(), db.titles()
                     self.ingest_count += 1
                     self._last_ingest_at = self._clock()
                     self._last_success_at = self._now()
-                    self._last_page = render_html.render(data)
-                    return self._last_page
+                    # Every cached range is stale the moment new rows land.
+                    self._pages.clear()
+                    rendered = self._render(records, titles, selected)
+                    self._pages[selected.key] = rendered
+                    return rendered
                 except Exception as error:  # noqa: BLE001 - a wall display must not 500
                     self._last_ingest_at = self._clock()
                     warning = f"refresh failed: {error}"
                     if self._last_success_at is not None:
                         age = int((self._now() - self._last_success_at).total_seconds())
                         warning += f" — showing data from {age}s ago"
-                    if self._last_page is not None:
-                        return _inject_warning(self._last_page, warning)
-                    empty = aggregate.build([], {}, now=self._now())
-                    return render_html.render(empty, warning=warning)
-            if self._last_page is not None:
-                return self._last_page
-            # Throttled, but nothing has ever rendered successfully — the
-            # first ingest failed. Show an empty page rather than crash.
-            return render_html.render(
-                aggregate.build([], {}, now=self._now()),
-                warning="no successful refresh yet",
-            )
+                    stale = self._pages.get(selected.key) or next(iter(self._pages.values()), None)
+                    if stale is not None:
+                        return _inject_warning(stale, warning)
+                    return self._render([], {}, selected, warning=warning)
+
+            cached = self._pages.get(selected.key)
+            if cached is not None:
+                return cached
+
+            # Throttled with nothing cached. If no ingest has *ever* worked,
+            # say so — an empty page and a broken scanner look identical
+            # otherwise, and silently showing zeroes is the worse failure.
+            never_succeeded = self._last_success_at is None
+            warning = "no successful refresh yet" if never_succeeded else None
+
+            # Otherwise this is just a range the user switched to between
+            # scans. Read the store rather than making them wait out the
+            # throttle; do not re-scan.
+            try:
+                with store.Store(self.db_path) as db:
+                    rendered = self._render(db.records(), db.titles(), selected, warning=warning)
+                if not never_succeeded:
+                    self._pages[selected.key] = rendered
+                return rendered
+            except Exception as error:  # noqa: BLE001 - a wall display must not 500
+                return self._render([], {}, selected, warning=f"could not read history: {error}")
 
 
 def _inject_warning(page: str, warning: str) -> str:
@@ -178,13 +217,20 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             # str rather than failing to parse) must still get a 404, not an
             # unhandled exception that drops the connection. Compare UTF-8
             # encoded bytes instead, which keeps the match constant-time.
+            # Split the query string off first. Only the path carries the
+            # secret, so `?range=…` must not participate in the comparison —
+            # but the comparison itself stays constant-time over the path.
+            raw_path, _, query = self.path.partition("?")
             if not secrets.compare_digest(
-                self.path.encode("utf-8", "surrogateescape"),
+                raw_path.encode("utf-8", "surrogateescape"),
                 expected_path.encode("utf-8"),
             ):
                 self.send_error(404, "Not Found")
                 return
-            body = app.page().encode("utf-8")
+            # An unknown or malformed range falls back to the default rather
+            # than erroring: it is a stale bookmark, not an attack.
+            requested = parse_qs(query).get("range", [None])[0]
+            body = app.page(requested).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -237,6 +283,7 @@ def serve(
     host: str = "0.0.0.0",
     port: int = DEFAULT_PORT,
     plan: plans.Plan | None = None,
+    refresh_seconds: int = DEFAULT_REFRESH_SECONDS,
 ) -> None:
     token = load_or_create_token(store.DATA_DIR)
     app = App(
@@ -244,6 +291,8 @@ def serve(
         projects_dir=scan.default_projects_dir(),
         token=token,
         plan=plan,
+        base_path=f"/d/{token}",
+        refresh_seconds=refresh_seconds,
     )
     httpd = bind(host, port, build_handler(app, token))
     print(f"Claude token dashboard on http://{local_ip()}:{port}/d/{token}")

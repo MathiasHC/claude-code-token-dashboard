@@ -84,8 +84,10 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for roughly **1024×768** and fits in one screen without
-scrolling. Smaller screens still work, but will scroll.
+The page is laid out for a width of **1024**. It is currently about **875px
+tall**, so on a 1024×768 display the daily chart sits just below the fold and
+needs a short scroll — measured, not estimated. Everything above it, including
+the hero row and the range selector, is visible without scrolling.
 
 ### 2. A Raspberry Pi driving a small screen
 
@@ -286,6 +288,36 @@ panel with its own heading — as the "By source" split already does for the
 surfaces that are covered.
 
 Reference: [Usage and Cost API](https://platform.claude.com/docs/en/api/usage-cost-api).
+
+## Choosing a date range
+
+A row of links under the bands re-scopes every panel below it:
+
+```
+[ TODAY ] [ 7 DAYS ] [ 30 DAYS ] [ MONTH ] [ ALL TIME ]
+```
+
+"Where the money goes", "by model", "by project", "by skill", "top sessions",
+the delegation and source splits, and the daily chart all follow the selection.
+Percentages are relative to the selected range, so a panel's shares always add
+up to what that panel is showing.
+
+**The hero row never moves.** Today / 7 days / month-to-date / all-time, and
+their deltas, are the fixed summary — if they changed with the selection the
+page would be arguing with itself.
+
+They are plain links (`?range=7d`), not a dropdown or clickable cards. This
+page carries no JavaScript, so a `<select>` would need a visible submit button
+and cards would give no hint they can be clicked. Links work on every browser
+ever shipped, and the current one is marked server-side rather than with
+`:hover`.
+
+**A selected range is temporary by design.** The auto-refresh returns to
+`ALL TIME`, so an always-on display always comes back to the same glanceable
+screen instead of sitting on whatever someone chose an hour ago. In practice
+you get one refresh interval (30s by default) to read a range before it
+resets — long enough to look, short enough that the wall display stays
+predictable. Raise `--refresh` if you want longer.
 
 ## What the numbers mean
 
