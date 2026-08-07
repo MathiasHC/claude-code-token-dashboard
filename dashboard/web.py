@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import os
 import secrets
 import socket
@@ -197,6 +198,41 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+def bind_message(host: str, port: int, error: OSError) -> str:
+    """Turn a bind failure into something worth reading.
+
+    Unhandled, these surface as a socket traceback ending in
+    `self.socket.bind(...)`, which says nothing about what went wrong or what
+    to do about it. Every case here is recoverable by whoever ran the command,
+    so name the cause and give them the next step.
+    """
+    if error.errno == errno.EADDRINUSE:
+        return (
+            f"Port {port} is already in use — the dashboard is probably "
+            "running already.\n"
+            f"  See what has it:  lsof -nP -iTCP:{port} -sTCP:LISTEN\n"
+            f"  Or pick another:  python3 -m dashboard --port {port + 1}"
+        )
+    if error.errno == errno.EACCES:
+        return (
+            f"Not allowed to bind port {port}. Ports below 1024 need root — "
+            f"pick a higher one, e.g. --port {DEFAULT_PORT}."
+        )
+    if error.errno == errno.EADDRNOTAVAIL:
+        return (
+            f"No interface on this machine has the address {host!r}, so there "
+            "is nothing to bind to. Drop --host to listen on every interface."
+        )
+    return f"Could not bind {host}:{port} — {error}"
+
+
+def bind(host: str, port: int, handler: type[BaseHTTPRequestHandler]) -> ThreadingHTTPServer:
+    try:
+        return ThreadingHTTPServer((host, port), handler)
+    except OSError as error:
+        raise SystemExit(bind_message(host, port, error)) from error
+
+
 def serve(
     host: str = "0.0.0.0",
     port: int = DEFAULT_PORT,
@@ -209,7 +245,7 @@ def serve(
         token=token,
         plan=plan,
     )
-    httpd = ThreadingHTTPServer((host, port), build_handler(app, token))
+    httpd = bind(host, port, build_handler(app, token))
     print(f"Claude token dashboard on http://{local_ip()}:{port}/d/{token}")
     print(f"Comparing against {app.plan.label}. Change it with --plan.")
     print("Open that on the iPad, then Share > Add to Home Screen. Ctrl-C to stop.")
