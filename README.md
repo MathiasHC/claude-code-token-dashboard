@@ -393,6 +393,54 @@ browser history and any proxy logs in between.
 put it behind a VPN or an authenticating reverse proxy rather than exposing it
 directly.
 
+## Troubleshooting
+
+**`Port 8420 is already in use`** — it is already running, most likely in
+another terminal or as a service. Find the process, or use a different port:
+
+```bash
+lsof -nP -iTCP:8420 -sTCP:LISTEN     # macOS / Linux — what has the port
+python3 -m dashboard --port 8421     # or just use another one
+```
+
+On a checkout older than [#2](https://github.com/MathiasHC/claude-code-token-dashboard/pull/2)
+this surfaced as a socket traceback ending in `self.socket.bind(...)` rather
+than a message — see [#3](https://github.com/MathiasHC/claude-code-token-dashboard/issues/3).
+Pull the latest `main` and it explains itself.
+
+**Everything reads $0.00, or "no data yet"** — the dashboard reads transcripts
+that Claude Code writes locally, so there is nothing to show until Claude Code
+has actually been used *on this machine*. Check there are transcripts:
+
+```bash
+find ~/.claude/projects -name '*.jsonl' | head
+```
+
+If they live somewhere else, point at them with `CLAUDE_PROJECTS_DIR`. Note the
+dashboard must run on the machine Claude Code runs on — see
+[How it fits together](#how-it-fits-together).
+
+**The page won't load from the tablet or Pi** — in rough order of likelihood:
+the host machine is asleep; the two devices are on different networks (a guest
+SSID will do it); the host's IP changed since you bookmarked it; or a firewall
+is blocking the port. Confirm it works on the host first with
+`http://localhost:8420/d/YOUR-TOKEN`, which rules the dashboard itself in or
+out before you start debugging the network.
+
+**It's comparing against the wrong plan** — pass `--plan` once to change it, or
+delete `~/.claude-token-dashboard/config.json` to be asked again. See
+[Which plan you're on](#which-plan-youre-on).
+
+**`error: externally-managed-environment` from pip** — that is PEP 668 on
+Homebrew, Debian and Raspberry Pi OS refusing a system-wide install. Only the
+tests need pip; use the virtualenv in [Tests](#tests). Running the dashboard
+itself needs nothing installed.
+
+**The URL stopped working after a restart** — the access token is stable and
+lives in `~/.claude-token-dashboard/token`; if that file was deleted, a new one
+was generated and the old URL is dead. Print the current one with
+`cat ~/.claude-token-dashboard/token`.
+
 ## Tests
 
 Some Python installations are "externally managed" (PEP 668 — Homebrew,
