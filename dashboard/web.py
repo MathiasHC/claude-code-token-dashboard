@@ -35,8 +35,6 @@ def load_or_create_token(directory: Path) -> str:
         # Without O_CREAT, os.open ignores the mode argument for existing files,
         # so we must fchmod the descriptor immediately after opening, before writing.
         os.fchmod(fd, 0o600)
-        # Test hook: allow tests to inject synchronization
-        _test_sync_after_fchmod()
     else:
         # Atomic create-at-mode-0600: no window where the file exists
         # world-readable before we get a chance to chmod it.
@@ -45,11 +43,6 @@ def load_or_create_token(directory: Path) -> str:
         handle.write(token)
     path.chmod(0o600)  # belt-and-suspenders against umask/pre-existing mode
     return token
-
-
-def _test_sync_after_fchmod():
-    """Test hook: override this to synchronize observer and writer in tests."""
-    pass
 
 
 def local_ip() -> str:
@@ -90,8 +83,8 @@ class App:
         # Prefix the range links point at, e.g. /d/<token>. Empty in tests,
         # where relative links are fine.
         self.base_path = base_path
-        # Also how long a selected range stays on screen before the page
-        # returns to the default view.
+        # How often the page reloads itself, in place — a selected range is
+        # carried across reloads rather than reset.
         self.refresh_seconds = refresh_seconds
         self.token = token
         self.min_ingest_interval = min_ingest_interval

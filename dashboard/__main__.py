@@ -18,9 +18,9 @@ def main() -> None:
         default=web.DEFAULT_REFRESH_SECONDS,
         metavar="SECONDS",
         help=(
-            "how often the page reloads (default "
-            f"{web.DEFAULT_REFRESH_SECONDS}). Also how long a selected date "
-            "range stays on screen before returning to the default view."
+            "how often the page reloads in place (default "
+            f"{web.DEFAULT_REFRESH_SECONDS}). A selected date range is kept "
+            "across reloads."
         ),
     )
     parser.add_argument(

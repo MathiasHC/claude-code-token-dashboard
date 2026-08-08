@@ -88,18 +88,26 @@ def test_fallback_branch_does_not_expose_token_during_write(tmp_path):
             time.sleep(0.00001)  # Poll very frequently (every 10 microseconds)
 
     def writer():
-        """Run load_or_create_token in a background thread."""
-        # Hook to synchronize: give observer thread time to see the fchmod effect
-        def sync_hook():
+        """Run load_or_create_token with the post-fchmod window widened.
+
+        The window has to be stretched from somewhere for the observer to
+        have a chance of catching an exposed token. Patching os.fchmod is the
+        honest seam: shipping a no-op function in the production token path
+        purely so a test can reach into it is scaffolding in a security-
+        sensitive code path, which is worse than a slightly awkward test.
+        """
+        real_fchmod = os.fchmod
+
+        def slow_fchmod(fd, mode):
+            real_fchmod(fd, mode)
             sync_event.set()
             time.sleep(0.001)
 
-        original_sync = web._test_sync_after_fchmod
-        web._test_sync_after_fchmod = sync_hook
+        os.fchmod = slow_fchmod
         try:
             web.load_or_create_token(tmp_path)
         finally:
-            web._test_sync_after_fchmod = original_sync
+            os.fchmod = real_fchmod
 
     observer_thread = threading.Thread(target=observer, daemon=True)
     observer_thread.start()
