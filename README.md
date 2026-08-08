@@ -398,9 +398,17 @@ not mixed into these totals.
 - Your plan answer is `~/.claude-token-dashboard/config.json` (override with
   `CLAUDE_DASHBOARD_CONFIG`). Delete it to be asked again.
 
-Nothing leaves your machine. There is no telemetry, no network egress, and no
-account of any kind — the dashboard only ever reads local files and serves
+Nothing leaves your machine. There is no telemetry, no account of any kind,
+and no outbound request — the dashboard only ever reads local files and serves
 them back on your own LAN.
+
+One line looks like an exception and is worth explaining, because you will
+find it if you read the source. `web.local_ip()` opens a **UDP** socket
+towards `8.8.8.8:80` purely to ask the kernel which local interface would be
+used, so the startup banner can print a URL your other devices can reach.
+UDP `connect()` transmits nothing — no packet is sent to that address, and it
+falls back to `127.0.0.1` if there is no route. Nothing is resolved, sent or
+received.
 
 ## Refresh cost
 
