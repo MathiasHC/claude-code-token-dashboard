@@ -232,11 +232,13 @@ def test_max_band_states_the_month_change_as_a_same_point_comparison():
 
 def test_session_titles_are_html_escaped():
     """Titles are arbitrary user text and routinely contain < and &."""
-    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "<script>alert(1)</script> & more"}, now=NOW)
+    # Kept under SESSION_TITLE_MAX so truncation cannot remove the very
+    # characters this test exists to check.
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "<b>a & b</b>"}, now=NOW)
     out = render_html.render(data)
-    assert "<script>alert(1)</script>" not in out
-    assert "&lt;script&gt;" in out
-    assert "&amp; more" in out
+    assert "<b>a & b</b>" not in out
+    assert "&lt;b&gt;" in out
+    assert "&amp;" in out
 
 
 def test_project_and_model_labels_are_escaped():
@@ -521,18 +523,6 @@ def test_plan_label_is_html_escaped():
     assert "&lt;script&gt;" in out
 
 
-def test_top_sessions_and_daily_share_one_grid_row():
-    """They were stacked, which cost 240px of a 748px fold and pushed the
-    daily chart off the iPad's first screen. Side by side the whole page
-    fits. Pinned because re-stacking them would silently undo that."""
-    data = aggregate.build([rec("m1", "2026-07-30")], {}, now=NOW)
-    out = render_html.render(data)
-    # Counting <tr> is no good here: the session list is itself a table.
-    # Assert the daily cell opens immediately after the sessions cell closes,
-    # which is only true when they share a row.
-    assert "</td>\n<td><h2>DAILY" in out
-
-
 def test_session_titles_are_truncated_for_the_narrower_column():
     """Half the width now, so the cap came down with it."""
     long_title = "x" * 200
@@ -540,3 +530,59 @@ def test_session_titles_are_truncated_for_the_narrower_column():
     out = render_html.render(data)
     assert "x" * (render_html.SESSION_TITLE_MAX + 1) not in out
     assert "…" in out
+
+
+# --- the daily chart's value axis ---------------------------------------
+
+def test_the_axis_lands_on_round_money_above_the_peak():
+    """The example that defined the feature: a $86 peak should read $50 /
+    $100, not $43 / $86. Two lines, so the top of the scale is twice the
+    step and the step must cover half the peak."""
+    assert render_html._axis_step(86) == 50
+    assert render_html._axis_step(8.6) == 5
+    assert render_html._axis_step(860) == 500
+
+
+def test_the_axis_does_not_waste_the_chart():
+    """A coarse 1/2/5 step set leaves the tallest bar at half height for
+    unlucky peaks. Every peak here must fill at least two thirds."""
+    for peak in (1, 3, 8.6, 20, 51, 86, 150, 337, 1234):
+        top = render_html._axis_step(peak) * 2
+        assert peak / top >= 0.66, f"{peak} only fills {peak / top:.0%}"
+        assert top >= peak, f"{peak} exceeds its own axis"
+
+
+def test_bars_are_measured_against_the_axis_not_the_peak():
+    """If bars scaled to the peak, the tallest would always touch the top
+    and the axis labels would be decoration rather than a scale."""
+    days = [DayCost(day=f"2026-07-{d:02d}", cost=c) for d, c in ((28, 10.0), (29, 86.0))]
+    out = render_html.render(_bare_data(daily=days))
+    heights = [int(m) for m in re.findall(r'class="col[^"]*"[^>]*height:(\d+)px', out)]
+    assert max(heights) < render_html.DAILY_CHART_HEIGHT_PX, "tallest bar hit the ceiling"
+
+
+def test_axis_labels_drop_the_cents():
+    assert render_html._axis_label(50) == "$50"
+    assert render_html._axis_label(1234) == "$1,234"
+    assert render_html._axis_label(0.5) == "$0.50"
+
+
+def test_the_three_breakdowns_share_a_row_and_the_chart_spans_the_width():
+    data = aggregate.build([rec("m1", "2026-07-30")], {}, now=NOW)
+    out = render_html.render(data)
+    assert "</td>\n<td><h2>BY SKILL" in out
+    assert "</td>\n<td><h2>TOP SESSIONS" in out
+    # The chart is alone in the last grid table, so it spans the full width.
+    last = out.rsplit('<table class="grid">', 1)[1]
+    assert last.count("<h2>") == 1
+    assert "DAILY" in last
+
+
+def test_the_chart_survives_the_ios5_lint():
+    """position:absolute is fine on iOS 5.1.1; flexbox and grid are not."""
+    days = [DayCost(day="2026-07-30", cost=5.0)]
+    out = render_html.render(_bare_data(daily=days))
+    assert "display:flex" not in out.replace(" ", "")
+    assert "display:grid" not in out.replace(" ", "")
+    assert "var(--" not in out
+    assert "<script" not in out.lower()

@@ -13,9 +13,9 @@ from .models import Bar, DashboardData
 
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
 SOURCE_COLOURS = ("#3fb950", "#a371f7", "#58a6ff", "#d29922", "#8b949e")
-DAILY_CHART_HEIGHT_PX = 44
-#: Half-width column since TOP SESSIONS sits beside the daily chart.
-SESSION_TITLE_MAX = 34
+DAILY_CHART_HEIGHT_PX = 78
+#: One of three columns on its row.
+SESSION_TITLE_MAX = 30
 
 CSS = """
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -68,6 +68,12 @@ td.barcell { padding-left:8px; }
 .note { font-size:11px; color:#8b949e; margin-top:4px; }
 table.daily { width:100%; table-layout:fixed; border-collapse:collapse; }
 table.daily td { vertical-align:bottom; text-align:center; padding:0 1px; }
+.chartwrap { position:relative; }
+.gridline { position:absolute; left:0; right:0; height:0; z-index:2;
+            border-top:1px solid #30363d; }
+.gridline .glabel { position:absolute; right:0; top:1px; font-size:10px;
+                    color:#8b949e; background:#161b22; padding:0 0 0 4px; }
+table.daily { position:relative; z-index:1; }
 .col { background:#238636; }
 .col.today { background:#58a6ff; }
 .titlebar .live { float:right; letter-spacing:0; margin-right:14px; color:#e6edf3; }
@@ -123,13 +129,58 @@ def _session_rows(bars: list[Bar]) -> str:
     return "".join(out)
 
 
+#: Multipliers a value axis is allowed to land on, so labels read as round
+#: money. Finer than the usual 1/2/5 set: with only two lines, a coarse set
+#: leaves the tallest bar at half height and wastes the chart.
+_AXIS_STEPS = (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10)
+
+
+def _axis_step(peak: float) -> float:
+    """Smallest round step whose double covers the peak.
+
+    The chart shows two lines, so the top of the scale is 2 x step and the
+    step has to be at least half the peak. A $86 peak gives $50, so the axis
+    reads $50 / $100 and the tallest bar reaches 86% of the chart.
+    """
+    import math
+
+    target = peak / 2
+    magnitude = 10 ** math.floor(math.log10(target)) if target > 0 else 1
+    for multiplier in _AXIS_STEPS:
+        candidate = multiplier * magnitude
+        if target <= candidate:
+            return candidate
+    return 10 * magnitude
+
+
+def _axis_label(value: float) -> str:
+    """Axis labels drop the cents unless the whole scale lives below a
+    dollar — "$50" reads as a scale, "$50.00" reads as a measurement."""
+    if value >= 10:
+        return f"${value:,.0f}"
+    if value >= 1:
+        return f"${value:,.1f}".rstrip("0").rstrip(".")
+    return f"${value:,.2f}"
+
+
 def _daily(data: DashboardData) -> str:
     if not data.daily:
         return '<div class="note">no daily history yet</div>'
     peak = max(point.cost for point in data.daily) or 1.0
+    # Bars are measured against the top gridline, not against the peak, so
+    # the axis labels mean what they say.
+    step = _axis_step(peak)
+    top = step * 2
+
+    lines = "".join(
+        f'<div class="gridline" style="bottom:{round(fraction * DAILY_CHART_HEIGHT_PX)}px">'
+        f'<span class="glabel">{_axis_label(value)}</span></div>'
+        for value, fraction in ((step, 0.5), (top, 1.0))
+    )
+
     cells = []
     for point in data.daily:
-        height = max(1, min(DAILY_CHART_HEIGHT_PX, round(point.cost / peak * DAILY_CHART_HEIGHT_PX)))
+        height = max(1, min(DAILY_CHART_HEIGHT_PX, round(point.cost / top * DAILY_CHART_HEIGHT_PX)))
         # One bar out of thirty is the only one still moving; without a
         # colour it takes a squint to find.
         today = " today" if point.day and point.day == data.today_day else ""
@@ -137,8 +188,9 @@ def _daily(data: DashboardData) -> str:
             f'<td><div class="col{today}" style="height:{height}px"></div></td>'
         )
     return (
+        f'<div class="chartwrap" style="height:{DAILY_CHART_HEIGHT_PX}px">{lines}'
         f'<table class="daily" style="height:{DAILY_CHART_HEIGHT_PX}px">'
-        f"<tr>{''.join(cells)}</tr></table>"
+        f"<tr>{''.join(cells)}</tr></table></div>"
         f'<div class="dscale">{escape(data.daily[0].day)}'
         f'<span style="float:right">{escape(data.daily[-1].day)}'
         f" &middot; peak {_money(peak)}</span></div>"
@@ -381,16 +433,16 @@ def render(
 <div class="note">avg {_money(data.avg_cost_per_message)}/msg &middot;
 {_money(data.avg_cost_per_session)}/session</div>{unpriced}</td>
 </tr>
-<tr>
-<td><h2>BY PROJECT &middot; {escape(data.range_label)}</h2>{_rows(data.by_project)}</td>
-<td><h2>BY SKILL &middot; {escape(data.range_label)} &middot; ATTRIBUTED</h2>{_rows(data.by_skill)}</td>
-</tr>
 </tbody></table>
 <table class="grid"><tbody>
 <tr>
+<td><h2>BY PROJECT &middot; {escape(data.range_label)}</h2>{_rows(data.by_project)}</td>
+<td><h2>BY SKILL &middot; {escape(data.range_label)} &middot; ATTRIBUTED</h2>{_rows(data.by_skill)}</td>
 <td><h2>TOP SESSIONS &middot; {escape(data.range_label)}</h2>{_session_rows(data.top_sessions)}</td>
-<td><h2>DAILY &middot; LAST {len(data.daily)} DAYS</h2>{_daily(data)}</td>
 </tr>
+</tbody></table>
+<table class="grid"><tbody>
+<tr><td><h2>DAILY &middot; LAST {len(data.daily)} DAYS</h2>{_daily(data)}</td></tr>
 </tbody></table>
 </body></html>
 """
