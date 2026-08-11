@@ -157,7 +157,11 @@ class App:
                     if self._last_success_at is not None:
                         age = int((self._now() - self._last_success_at).total_seconds())
                         warning += f" — showing data from {age}s ago"
-                    stale = self._pages.get(selected.key) or next(iter(self._pages.values()), None)
+                    # Only this range's own cached page. Falling back to
+                    # whatever else happens to be cached served a
+                    # different window's numbers under a banner that
+                    # only claimed the data was stale.
+                    stale = self._pages.get(selected.key)
                     if stale is not None:
                         return _inject_warning(stale, warning)
                     return self._render([], {}, selected, warning=warning)

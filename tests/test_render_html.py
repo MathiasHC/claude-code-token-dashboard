@@ -152,8 +152,15 @@ def test_page_shows_the_session_title(page):
     assert "/graphify" in page
 
 
-def test_page_shows_the_cache_hit_rate(page):
-    assert "hit rate" in page.lower()
+def test_page_shows_what_caching_saved_not_the_hit_rate(page):
+    """Hit rate is saturated on any real history (99.68-100.00% across eight
+    consecutive weeks), so it was replaced by the figure that actually moves.
+    The counterfactual qualifier is part of the contract: without it the
+    number reads as money that was once at stake, and iOS 5.1.1 has no
+    tooltip to explain it."""
+    assert "caching saved" in page
+    assert "same tokens at uncached rates" in page
+    assert "hit rate" not in page.lower()
 
 
 # --- like-for-like deltas -------------------------------------------------

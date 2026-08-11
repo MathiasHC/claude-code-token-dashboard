@@ -35,9 +35,11 @@ CATALOGUE: tuple[Range, ...] = (
     Range("all", "ALL TIME", "ALL TIME"),
 )
 
-#: All time. The wall display returns here on every refresh, so what you see
-#: from across the room never depends on what someone clicked earlier.
-DEFAULT = CATALOGUE[-1]
+#: 30 days. An all-time default made every panel below the selector the most
+#: static content on the page — one day's work moves nothing against a year.
+#: Thirty days moves daily, which is the point of a wall display. ALL TIME is
+#: one click away and the hero row is global regardless.
+DEFAULT = CATALOGUE[2]
 
 
 def by_key(key: str | None) -> Range | None:
