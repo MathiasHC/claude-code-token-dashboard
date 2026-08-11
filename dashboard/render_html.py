@@ -14,49 +14,50 @@ from .models import Bar, DashboardData
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
 SOURCE_COLOURS = ("#3fb950", "#a371f7", "#58a6ff", "#d29922", "#8b949e")
 DAILY_CHART_HEIGHT_PX = 44
-SESSION_TITLE_MAX = 62
+#: Half-width column since TOP SESSIONS sits beside the daily chart.
+SESSION_TITLE_MAX = 34
 
 CSS = """
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#0e1116; color:#e6edf3;
        font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
-       font-size:16px; padding:10px; }
+       font-size:16px; padding:7px; }
 a { color:inherit; text-decoration:none; }
 .titlebar { font-size:14px; letter-spacing:2px; color:#8b949e;
             border-bottom:1px solid #30363d; padding-bottom:6px; margin-bottom:8px; }
 .titlebar .when { float:right; letter-spacing:0; }
 .warn { background:#3d1d1d; border:1px solid #f85149; color:#ffa198;
         padding:6px 10px; margin-bottom:8px; font-size:13px; }
-table.hero { width:100%; table-layout:fixed; border-collapse:collapse; margin-bottom:6px; }
+table.hero { width:100%; table-layout:fixed; border-collapse:collapse; margin-bottom:4px; }
 table.hero td { vertical-align:top; }
 .hlabel { font-size:11px; letter-spacing:1.5px; color:#8b949e; }
 .hvalue { font-size:40px; font-weight:bold; line-height:46px; }
 .hsub { font-size:11px; color:#8b949e; }
 .hdelta { font-size:11px; color:#8b949e; }
 .maxrow { background:#161b22; border:1px solid #30363d;
-          padding:7px 10px; margin-bottom:8px; font-size:13px; color:#8b949e; }
+          padding:6px 10px; margin-bottom:6px; font-size:13px; color:#8b949e; }
 .maxrow .mult { font-size:22px; font-weight:bold; color:#3fb950; }
 .maxrow .mom { float:right; }
 /* border-spacing matches table.grid so the bands line up with the panels
    below them; margin-bottom keeps the vertical rhythm the single full-width
    delegation band used to have. */
 table.ranges { width:100%; table-layout:fixed; border-collapse:separate;
-               border-spacing:6px 0; margin:0 0 6px 0; }
+               border-spacing:6px 0; margin:0 0 4px 0; }
 td.rangecell { padding:0; }
 a.range { display:block; background:#161b22; border:1px solid #30363d;
           padding:5px 0; text-align:center; font-size:11px; letter-spacing:1.5px;
           color:#8b949e; }
 a.range.on { background:#1f6feb; border-color:#1f6feb; color:#ffffff; }
 table.bands { width:100%; table-layout:fixed; border-collapse:separate;
-              border-spacing:6px 0; margin:0 0 8px 0; }
-td.band { background:#161b22; border:1px solid #30363d; padding:7px 10px;
+              border-spacing:6px 0; margin:0 0 6px 0; }
+td.band { background:#161b22; border:1px solid #30363d; padding:6px 10px;
           font-size:13px; color:#8b949e; vertical-align:top; }
 .bandtitle { color:#e6edf3; letter-spacing:1.5px; font-size:11px; margin-bottom:4px; }
-table.grid { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:6px; }
+table.grid { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:5px; }
 table.grid > tbody > tr > td { background:#161b22; border:1px solid #30363d;
-                               padding:7px 9px; vertical-align:top; }
+                               padding:6px 9px; vertical-align:top; }
 h2 { font-size:10px; letter-spacing:1.5px; color:#8b949e;
-     font-weight:normal; margin-bottom:5px; }
+     font-weight:normal; margin-bottom:4px; }
 table.rows { width:100%; border-collapse:collapse; }
 table.rows td { font-size:13px; padding:2px 0; white-space:nowrap; overflow:hidden; }
 td.amt { text-align:right; width:80px; }
@@ -64,7 +65,7 @@ td.pct { text-align:right; width:52px; color:#8b949e; }
 td.barcell { padding-left:8px; }
 .bar { background:#21262d; height:9px; }
 .fill { height:9px; }
-.note { font-size:11px; color:#8b949e; margin-top:5px; }
+.note { font-size:11px; color:#8b949e; margin-top:4px; }
 table.daily { width:100%; table-layout:fixed; border-collapse:collapse; }
 table.daily td { vertical-align:bottom; text-align:center; padding:0 1px; }
 .col { background:#238636; }
@@ -386,8 +387,10 @@ def render(
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
-<tr><td><h2>TOP SESSIONS &middot; {escape(data.range_label)}</h2>{_session_rows(data.top_sessions)}</td></tr>
-<tr><td><h2>DAILY &middot; LAST {len(data.daily)} DAYS</h2>{_daily(data)}</td></tr>
+<tr>
+<td><h2>TOP SESSIONS &middot; {escape(data.range_label)}</h2>{_session_rows(data.top_sessions)}</td>
+<td><h2>DAILY &middot; LAST {len(data.daily)} DAYS</h2>{_daily(data)}</td>
+</tr>
 </tbody></table>
 </body></html>
 """

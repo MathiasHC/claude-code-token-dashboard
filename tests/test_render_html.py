@@ -519,3 +519,24 @@ def test_plan_label_is_html_escaped():
     out = render_html.render(_bare_data(plan_label="<script>x</script>"))
     assert "<script>x</script>" not in out
     assert "&lt;script&gt;" in out
+
+
+def test_top_sessions_and_daily_share_one_grid_row():
+    """They were stacked, which cost 240px of a 748px fold and pushed the
+    daily chart off the iPad's first screen. Side by side the whole page
+    fits. Pinned because re-stacking them would silently undo that."""
+    data = aggregate.build([rec("m1", "2026-07-30")], {}, now=NOW)
+    out = render_html.render(data)
+    # Counting <tr> is no good here: the session list is itself a table.
+    # Assert the daily cell opens immediately after the sessions cell closes,
+    # which is only true when they share a row.
+    assert "</td>\n<td><h2>DAILY" in out
+
+
+def test_session_titles_are_truncated_for_the_narrower_column():
+    """Half the width now, so the cap came down with it."""
+    long_title = "x" * 200
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": long_title}, now=NOW)
+    out = render_html.render(data)
+    assert "x" * (render_html.SESSION_TITLE_MAX + 1) not in out
+    assert "…" in out
