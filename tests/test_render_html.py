@@ -134,8 +134,14 @@ def test_page_shows_every_panel_heading(page):
         assert heading in page
 
 
-def test_page_labels_panels_as_all_time(page):
-    assert "all time" in page.lower()
+def test_panels_are_labelled_with_the_selected_range(page):
+    """Asserting "all time" appears somewhere passed vacuously once the
+    default changed — the phrase still occurs in the hero row and in the
+    range selector. Check the panel headings themselves."""
+    data = aggregate.build([rec("m1", "2026-07-30")], {}, now=NOW)
+    out = render_html.render(data)
+    assert f"WHERE THE MONEY GOES &middot; {data.range_label}" in out
+    assert f"BY MODEL &middot; {data.range_label}" in out
 
 
 def test_page_renders_bars_as_divs_with_percentage_widths(page):
@@ -385,9 +391,12 @@ def _golden_data() -> DashboardData:
             Bar(label="alpha", cost=600.0, share=0.6),
             Bar(label="beta", cost=400.0, share=0.4),
         ],
+        # No "(none)" row: the panel is headed ATTRIBUTED and aggregate
+        # excludes the unattributed bucket, so a fixture containing it would
+        # pin markup the real pipeline can never produce.
         by_skill=[
             Bar(label="graphify", cost=550.0, share=0.55),
-            Bar(label="(none)", cost=450.0, share=0.45),
+            Bar(label="code-review", cost=450.0, share=0.45),
         ],
         top_sessions=[
             Bar(label="/graphify refactor billing", cost=220.0, share=0.22),

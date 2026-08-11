@@ -229,6 +229,19 @@ def _bands(data: DashboardData) -> str:
     return f'<table class="bands"><tbody><tr>{row}</tr></tbody></table>'
 
 
+def _pace_clause(data: DashboardData) -> str:
+    """The month-end projection, or nothing.
+
+    Names the method: two defensible ones disagree, by 1% on the reference
+    history but by more in a month containing a real change of behaviour.
+    Kept short — the plan band is one line, and a longer clause wrapped it
+    onto a second, growing the page by 16px.
+    """
+    if not data.on_pace:
+        return ""
+    return f" &middot; on pace {_money(data.on_pace)} (7-day rate)"
+
+
 def _plan_comparison(data: DashboardData) -> str:
     """Month-to-date api-equivalent cost against what the plan actually costs.
 
@@ -240,22 +253,13 @@ def _plan_comparison(data: DashboardData) -> str:
         return (
             f"vs {escape(data.plan_label)} &nbsp; "
             f"{_money(data.month_to_date.cost)} api-equivalent &middot; "
-            "no subscription to compare against"
-        )
-    pace = ""
-    if data.on_pace:
-        # Says which method, because two defensible ones disagree — by 1% on
-        # the reference history, but that gap widens in a month containing a
-        # real change of behaviour.
-        pace = (
-            f" &middot; on pace for {_money(data.on_pace)} "
-            "at the last 7 days' rate"
+            f"no subscription to compare against{_pace_clause(data)}"
         )
     return (
         f"vs {escape(data.plan_label)} &nbsp; {_money(data.month_to_date.cost)} "
         f"api-equivalent / {_money(data.max_plan_monthly_usd)} actual = "
         f'<span class="mult">{data.effective_multiple:.1f}&times;</span> effective'
-        f"{pace}"
+        f"{_pace_clause(data)}"
     )
 
 
@@ -270,8 +274,12 @@ def _cache_note(data: DashboardData) -> str:
     money that was once in play; it never was. There is no tooltip on
     iOS 5.1.1, so the counterfactual has to sit in the visible text.
     """
-    if data.cache_saved <= 0:
+    if data.cache_read_tokens <= 0:
         return "no cache reads yet"
+    if data.cache_saved <= 0:
+        # Reads happened, but on models with no rate — claiming "no cache
+        # reads yet" would deny something that is on the page above.
+        return "cache reads on unpriced models only"
     return f"caching saved {_money(data.cache_saved)} &middot; same tokens at uncached rates"
 
 

@@ -440,3 +440,41 @@ def test_a_junk_query_string_does_not_break_routing(server, query):
 def test_the_refresh_interval_reaches_the_page(tmp_path):
     page = make_app(tmp_path, refresh_seconds=90).page()
     assert 'content="90"' in page
+
+
+# --- stale-page fallback ------------------------------------------------
+
+def test_a_failed_refresh_never_serves_another_range(tmp_path):
+    """The spec's required regression test. The fallback used to reach for
+    next(iter(self._pages.values())), so a request for TODAY could be served
+    the ALL TIME page under a banner that only said the data was stale —
+    wrong window, no indication."""
+    app = make_app(tmp_path, min_ingest_interval=0.0)
+    app.page("30d")
+    assert "LAST 30 DAYS" in app._pages["30d"]
+
+    def explode(*_args, **_kwargs):
+        raise OSError("disk gone")
+
+    app._scan = explode  # type: ignore[method-assign]
+    out = app.page("today")
+    assert "LAST 30 DAYS" not in out, "served a different range's page"
+    assert 'class="warn"' in out
+
+
+def test_the_banner_does_not_claim_data_it_is_not_showing(tmp_path):
+    """'showing data from 120s ago' over an all-zero page describes figures
+    the reader cannot see. The age clause belongs only to a real stale page."""
+    app = make_app(tmp_path, min_ingest_interval=0.0)
+    app.page("30d")
+
+    def explode(*_args, **_kwargs):
+        raise OSError("disk gone")
+
+    app._scan = explode  # type: ignore[method-assign]
+    empty = app.page("today")
+    assert "showing data from" not in empty
+    assert "no data to show for this range" in empty
+
+    stale = app.page("30d")
+    assert "showing data from" in stale, "a real stale page should still say so"

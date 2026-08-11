@@ -22,9 +22,16 @@ UNATTRIBUTED_SKILL = "(none)"
 #: rate to nothing.
 IDLE_CAP_SECONDS = 300
 
-#: Below this many days into a month, a trailing-7-day projection is mostly
-#: last month and says more about it than about this one.
+#: Up to and including this day of the month, a trailing-7-day projection is
+#: mostly last month and says more about it than about this one. On the 3rd,
+#: five of the seven days are still last month's.
 MIN_DAYS_FOR_PACE = 3
+
+#: A rate needs a denominator worth dividing by. The first two messages of a
+#: day are typically seconds apart, and dividing a real cost by two seconds
+#: of "active time" produced $2,219/hr against a true $20.59/hr on live data
+#: — the idle cap guards dilution, this guards the inflation direction.
+MIN_ACTIVE_SECONDS = 900
 
 #: Display names for the surfaces in UsageRecord.source. An unrecognised
 #: source is shown verbatim rather than dropped, so a future surface still
@@ -45,12 +52,14 @@ def _bars(totals: dict[str, float], grand_total: float, top_n: int | None) -> li
     ]
 
 
-def _local_naive(ts: str) -> dt.datetime | None:
-    """A UTC transcript timestamp as a naive local datetime.
+def _instant(ts: str) -> dt.datetime | None:
+    """A transcript timestamp as an aware UTC datetime.
 
-    `now` is injected as a naive local datetime, so timestamps have to be
-    brought into the same frame before they can be subtracted. Mirrors what
-    scan.local_day does for dates.
+    Durations are computed in UTC rather than in local wall-clock time.
+    Subtracting naive local times is wrong by the offset across a DST
+    change, and across a fall-back fold two instants an hour apart map to
+    the same local time, so a real gap computes as zero and the burn rate
+    disappears. UTC has neither problem.
     """
     if not ts:
         return None
@@ -60,7 +69,7 @@ def _local_naive(ts: str) -> dt.datetime | None:
         return None
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=dt.timezone.utc)
-    return moment.astimezone().replace(tzinfo=None)
+    return moment.astimezone(dt.timezone.utc)
 
 
 def _burn_rate(
@@ -77,7 +86,7 @@ def _burn_rate(
 
     Returns (None, None) when there is not enough of today to divide by.
     """
-    moments = sorted(m for m in (_local_naive(r.ts) for r in todays) if m is not None)
+    moments = sorted(m for m in (_instant(r.ts) for r in todays) if m is not None)
     if len(moments) < 2:
         return None, None
 
@@ -85,11 +94,21 @@ def _burn_rate(
         min((later - earlier).total_seconds(), IDLE_CAP_SECONDS)
         for earlier, later in zip(moments, moments[1:])
     )
-    if active_seconds <= 0:
+    # Too little of the day to divide by. Without this the first two messages
+    # — usually seconds apart — set the headline rate two orders of magnitude
+    # too high, and it stays visibly wrong for tens of minutes.
+    if active_seconds < MIN_ACTIVE_SECONDS:
         return None, None
 
     spent = sum(costs[r.message_id] for r in todays)
-    idle = max(0, int((now - moments[-1]).total_seconds() // 60))
+    if spent <= 0:
+        # Every message today was on an unpriced model. $0.00/hr reads as a
+        # measurement rather than an absence.
+        return None, None
+
+    # `now` is naive local; compare instants, not wall clocks.
+    now_utc = now.astimezone(dt.timezone.utc) if now.tzinfo else now.astimezone().astimezone(dt.timezone.utc)
+    idle = max(0, int((now_utc - moments[-1]).total_seconds() // 60))
     return spent / (active_seconds / 3600), idle
 
 
@@ -107,7 +126,7 @@ def _on_pace(
     Days with no usage count as zero rather than being skipped — a quiet
     weekend is part of the rate, not missing data.
     """
-    if now.day < MIN_DAYS_FOR_PACE:
+    if now.day <= MIN_DAYS_FOR_PACE:
         return None
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     remaining = days_in_month - now.day
@@ -324,6 +343,7 @@ def build(
         daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
         cache_hit_rate=(reads / (reads + fresh) if (reads + fresh) else 0.0),
         cache_saved=cache_saved,
+        cache_read_tokens=reads,
         on_pace=_on_pace(per_day_all, bucket_cost["month"], now),
         burn_rate_hourly=burn_rate,
         idle_minutes=idle_minutes,

@@ -153,17 +153,21 @@ class App:
                     return rendered
                 except Exception as error:  # noqa: BLE001 - a wall display must not 500
                     self._last_ingest_at = self._clock()
-                    warning = f"refresh failed: {error}"
-                    if self._last_success_at is not None:
-                        age = int((self._now() - self._last_success_at).total_seconds())
-                        warning += f" — showing data from {age}s ago"
                     # Only this range's own cached page. Falling back to
-                    # whatever else happens to be cached served a
-                    # different window's numbers under a banner that
-                    # only claimed the data was stale.
+                    # whatever else happens to be cached served a different
+                    # window's numbers under a banner that only claimed the
+                    # data was stale.
                     stale = self._pages.get(selected.key)
+                    warning = f"refresh failed: {error}"
                     if stale is not None:
+                        # The age clause is only true when there is in fact
+                        # older data on screen. Attached to an empty page it
+                        # claims figures the reader cannot see.
+                        if self._last_success_at is not None:
+                            age = int((self._now() - self._last_success_at).total_seconds())
+                            warning += f" — showing data from {age}s ago"
                         return _inject_warning(stale, warning)
+                    warning += " — no data to show for this range"
                     return self._render([], {}, selected, warning=warning)
 
             cached = self._pages.get(selected.key)

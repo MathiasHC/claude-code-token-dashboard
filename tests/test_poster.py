@@ -122,37 +122,69 @@ def test_the_page_states_which_projection_method_it_used():
     being unfalsifiable."""
     data = aggregate.build([rec("m1", "2026-08-11")], {}, now=NOW)
     out = render_html.render(data)
-    assert "on pace for" in out
-    assert "last 7 days" in out
+    assert "on pace" in out
+    assert "7-day rate" in out
 
 
 # --- burn rate ----------------------------------------------------------
+# Timestamps are derived from NOW rather than written as fixed UTC hours: a
+# fixed hour lands in tomorrow (or the future) for machines far enough east,
+# which made an earlier version of these tests fail at UTC+9 and beyond.
+
+
+def _ago(minutes: int) -> dt.datetime:
+    return NOW - dt.timedelta(minutes=minutes)
+
+
+def at(moment: dt.datetime, message_id: str, **overrides) -> UsageRecord:
+    """A record at a given *local* moment, stored as the UTC string a
+    transcript would actually contain."""
+    utc = moment.astimezone(dt.timezone.utc)
+    return rec(
+        message_id,
+        moment.date().isoformat(),
+        **{"ts": utc.strftime("%Y-%m-%dT%H:%M:%S.000Z"), **overrides},
+    )
+
 
 def test_burn_rate_is_cost_over_active_time():
-    """Two messages 3 minutes apart — inside the idle cap, so the whole gap
-    counts. $50 over 3 minutes is $1000/hr."""
-    records = [
-        rec("m1", "2026-08-11", hour=9, minute=0),
-        rec("m2", "2026-08-11", hour=9, minute=3),
-    ]
+    """Five messages five minutes apart: four gaps at exactly the idle cap is
+    20 minutes of active time, and $125 over 20 minutes is $375/hr."""
+    records = [at(_ago(120 - 5 * i), f"m{i}") for i in range(5)]
     data = aggregate.build(records, {}, now=NOW)
-    assert data.burn_rate_hourly == pytest.approx(1000.0)
+    assert data.burn_rate_hourly == pytest.approx(375.0)
 
 
 def test_a_long_gap_contributes_only_the_idle_cap():
-    """The load-bearing case: a session left open across a lunch break. Wall
-    clock would say 4 hours and dilute the rate to nothing; capped, the gap
-    contributes 5 minutes."""
-    records = [
-        rec("m1", "2026-08-11", hour=9, minute=0),
-        rec("m2", "2026-08-11", hour=13, minute=0),
-    ]
+    """A session left open across the afternoon. Four messages spanning nine
+    hours give three capped gaps — 15 minutes of active time, not nine hours,
+    so the rate describes the work rather than the wall clock."""
+    records = [at(_ago(600 - 180 * i), f"m{i}") for i in range(4)]
     data = aggregate.build(records, {}, now=NOW)
-    assert data.burn_rate_hourly == pytest.approx(50.0 / (aggregate.IDLE_CAP_SECONDS / 3600))
+    assert data.burn_rate_hourly == pytest.approx(100.0 / (900 / 3600))
+
+
+def test_too_little_active_time_shows_no_rate_at_all():
+    """The defect this floor exists for. On real history the first three
+    messages of a day are seconds apart, and dividing by that produced
+    $2,219/hr against a true $20.59/hr — a 108x overstatement that stayed on
+    screen for a quarter of an hour."""
+    records = [at(_ago(120), "m1"), at(_ago(119), "m2"), at(_ago(118), "m3")]
+    data = aggregate.build(records, {}, now=NOW)
+    assert data.burn_rate_hourly is None
+    assert "/hr" not in render_html.render(data)
+
+
+def test_the_floor_is_active_time_not_message_count():
+    """Many messages inside a couple of minutes still must not produce a
+    rate — it is the denominator that is too small, not the sample."""
+    records = [at(_ago(120) + dt.timedelta(seconds=5 * i), f"m{i}") for i in range(40)]
+    data = aggregate.build(records, {}, now=NOW)
+    assert data.burn_rate_hourly is None
 
 
 def test_a_single_message_today_does_not_divide_by_zero():
-    data = aggregate.build([rec("m1", "2026-08-11")], {}, now=NOW)
+    data = aggregate.build([at(_ago(60), "m1")], {}, now=NOW)
     assert data.burn_rate_hourly is None
     assert data.idle_minutes is None
 
@@ -162,18 +194,24 @@ def test_no_messages_today_suppresses_the_segment_entirely():
     reads as a measurement rather than an absence."""
     data = aggregate.build([rec("m1", "2026-08-04")], {}, now=NOW)
     assert data.burn_rate_hourly is None
-    out = render_html.render(data)
-    assert "/hr" not in out
+    assert "/hr" not in render_html.render(data)
+
+
+def test_an_entirely_unpriced_day_shows_no_rate():
+    """Cost over active time is 0/x. The docstring promises never to print
+    $0.00/hr, and a zero numerator is as misleading as a tiny denominator."""
+    records = [
+        at(_ago(120 - 5 * i), f"m{i}", model="claude-future-9") for i in range(5)
+    ]
+    data = aggregate.build(records, {}, now=NOW)
+    assert data.burn_rate_hourly is None
+    assert "/hr" not in render_html.render(data)
 
 
 def test_idle_minutes_counts_from_the_last_message():
-    records = [
-        rec("m1", "2026-08-11", hour=9, minute=0),
-        rec("m2", "2026-08-11", hour=9, minute=30),
-    ]
+    records = [at(_ago(120 - 5 * i), f"m{i}") for i in range(5)]
     data = aggregate.build(records, {}, now=NOW)
-    assert data.idle_minutes is not None
-    assert data.idle_minutes > 0
+    assert data.idle_minutes == pytest.approx(100, abs=1)
     assert "idle" in render_html.render(data)
 
 

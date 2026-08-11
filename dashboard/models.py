@@ -110,6 +110,9 @@ class DashboardData:
     #: input rates. Never money that was in play — see render_html, which is
     #: required to say so on the page.
     cache_saved: float = 0.0
+    #: Kept alongside cache_saved so the page can tell "no cache reads"
+    #: apart from "cache reads we have no rate for".
+    cache_read_tokens: int = 0
     #: Month-to-date plus the trailing-7-day rate over the days remaining.
     #: None early in a month, where the trailing window is mostly last month.
     on_pace: float | None = None
