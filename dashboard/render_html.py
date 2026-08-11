@@ -14,8 +14,6 @@ from .models import Bar, DashboardData
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
 SOURCE_COLOURS = ("#3fb950", "#a371f7", "#58a6ff", "#d29922", "#8b949e")
 DAILY_CHART_HEIGHT_PX = 78
-#: One of three columns on its row.
-SESSION_TITLE_MAX = 30
 
 CSS = """
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -59,6 +57,13 @@ table.grid > tbody > tr > td { background:#161b22; border:1px solid #30363d;
 h2 { font-size:10px; letter-spacing:1.5px; color:#8b949e;
      font-weight:normal; margin-bottom:4px; }
 table.rows { width:100%; border-collapse:collapse; }
+table.srows { width:100%; table-layout:fixed; border-collapse:collapse; }
+table.srows td { font-size:13px; padding:2px 0; white-space:nowrap;
+                 overflow:hidden; }
+/* Truncation is the browser's job: a fixed character cap cuts the same
+   number of letters whatever the column is actually worth, and gets it
+   wrong on every width but the one it was tuned for. */
+td.stitle { text-overflow:ellipsis; padding-right:8px; }
 table.rows td { font-size:13px; padding:2px 0; white-space:nowrap; overflow:hidden; }
 td.amt { text-align:right; width:80px; }
 td.pct { text-align:right; width:52px; color:#8b949e; }
@@ -114,15 +119,14 @@ def _rows(bars: list[Bar]) -> str:
 def _session_rows(bars: list[Bar]) -> str:
     if not bars:
         return '<div class="note">no sessions yet</div>'
-    out = ['<table class="rows">']
+    out = ['<table class="srows">']
     for bar in bars:
-        label = bar.label
-        if len(label) > SESSION_TITLE_MAX:
-            label = label[: SESSION_TITLE_MAX - 1] + "…"
+        # Title first, amount right-aligned — the same shape as every other
+        # breakdown panel, which reads label-then-money.
         out.append(
             "<tr>"
+            f'<td class="stitle">{escape(bar.label)}</td>'
             f'<td class="amt">{_money(bar.cost)}</td>'
-            f'<td style="padding-left:10px">{escape(label)}</td>'
             "</tr>"
         )
     out.append("</table>")

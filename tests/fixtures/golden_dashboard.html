@@ -47,6 +47,13 @@ table.grid > tbody > tr > td { background:#161b22; border:1px solid #30363d;
 h2 { font-size:10px; letter-spacing:1.5px; color:#8b949e;
      font-weight:normal; margin-bottom:4px; }
 table.rows { width:100%; border-collapse:collapse; }
+table.srows { width:100%; table-layout:fixed; border-collapse:collapse; }
+table.srows td { font-size:13px; padding:2px 0; white-space:nowrap;
+                 overflow:hidden; }
+/* Truncation is the browser's job: a fixed character cap cuts the same
+   number of letters whatever the column is actually worth, and gets it
+   wrong on every width but the one it was tuned for. */
+td.stitle { text-overflow:ellipsis; padding-right:8px; }
 table.rows td { font-size:13px; padding:2px 0; white-space:nowrap; overflow:hidden; }
 td.amt { text-align:right; width:80px; }
 td.pct { text-align:right; width:52px; color:#8b949e; }
@@ -95,7 +102,7 @@ $41.15/session</div><div class="note">1 unpriced model(s), counted but not coste
 <tr>
 <td><h2>BY PROJECT &middot; ALL TIME</h2><table class="rows"><tr><td>alpha</td><td class="amt">$600.00</td><td class="pct">60.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:60.0%;background:#58a6ff"></div></div></td></tr><tr><td>beta</td><td class="amt">$400.00</td><td class="pct">40.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:40.0%;background:#d29922"></div></div></td></tr></table></td>
 <td><h2>BY SKILL &middot; ALL TIME &middot; ATTRIBUTED</h2><table class="rows"><tr><td>graphify</td><td class="amt">$550.00</td><td class="pct">55.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:55.0%;background:#58a6ff"></div></div></td></tr><tr><td>code-review</td><td class="amt">$450.00</td><td class="pct">45.0%</td><td class="barcell"><div class="bar"><div class="fill" style="width:45.0%;background:#d29922"></div></div></td></tr></table></td>
-<td><h2>TOP SESSIONS &middot; ALL TIME</h2><table class="rows"><tr><td class="amt">$220.00</td><td style="padding-left:10px">/graphify refactor billing</td></tr><tr><td class="amt">$80.00</td><td style="padding-left:10px">(untitled session)</td></tr></table></td>
+<td><h2>TOP SESSIONS &middot; ALL TIME</h2><table class="srows"><tr><td class="stitle">/graphify refactor billing</td><td class="amt">$220.00</td></tr><tr><td class="stitle">(untitled session)</td><td class="amt">$80.00</td></tr></table></td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
