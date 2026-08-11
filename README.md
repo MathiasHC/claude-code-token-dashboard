@@ -41,7 +41,10 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
-- **A daily chart** — the last 30 active days, with today picked out.
+- **A daily chart** — the last 30 active days across the full width, with
+  today picked out and a value axis that snaps to round money: a $86 peak
+  draws lines at $50 and $100, so the bars are readable as amounts rather
+  than only as relative heights.
 
 ## Requirements
 
@@ -105,10 +108,10 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **747px tall**, so all of
-it — including the daily chart — fits a 1024×768 screen without scrolling.
-Measured in a 1024-wide frame, not estimated. It was 875px until the top
-sessions and daily panels were put side by side rather than stacked.
+The page is laid out for a width of **1024** and is **742px tall**, so all of
+it fits a 1024×768 screen without scrolling. Measured in a 1024-wide frame,
+not estimated — it was 875px before the panels were rearranged into full
+rows.
 
 ### 2. A Raspberry Pi driving a small screen
 
