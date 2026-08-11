@@ -106,6 +106,23 @@ class DashboardData:
     main_cost: float = 0.0
     subagent_cost: float = 0.0
     by_source: list[Bar] = field(default_factory=list)
+    #: Counterfactual: what the cache-read tokens would have cost at full
+    #: input rates. Never money that was in play — see render_html, which is
+    #: required to say so on the page.
+    cache_saved: float = 0.0
+    #: Kept alongside cache_saved so the page can tell "no cache reads"
+    #: apart from "cache reads we have no rate for".
+    cache_read_tokens: int = 0
+    #: Month-to-date plus the trailing-7-day rate over the days remaining.
+    #: None early in a month, where the trailing window is mostly last month.
+    on_pace: float | None = None
+    #: Cost per hour of *active* time today, and minutes since the last
+    #: message. None when today has too little activity to divide by.
+    burn_rate_hourly: float | None = None
+    idle_minutes: int | None = None
+    #: Today as a local ISO date, so the daily chart can mark its own
+    #: column without the renderer reading a clock.
+    today_day: str = ""
 
     @property
     def subagent_share(self) -> float:

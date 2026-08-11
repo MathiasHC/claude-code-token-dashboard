@@ -312,9 +312,10 @@ and cards would give no hint they can be clicked. Links work on every browser
 ever shipped, and the current one is marked server-side rather than with
 `:hover`.
 
-**A selected range sticks.** The page auto-refreshes in place, so the data
-updates on its usual interval while the range you chose stays put. Click
-`ALL TIME` to go back.
+**The default is 30 DAYS**, and a selected range sticks. The page
+auto-refreshes in place, so the data updates on its usual interval while the
+range you chose stays put. Click `30 DAYS` to get back to the default, or
+`ALL TIME` for everything.
 
 This was the other way round at first — the refresh returned to `ALL TIME` on
 the theory that a wall display should always show one glanceable screen. It
@@ -341,11 +342,22 @@ reopening the bare URL.
   split.
 - **By source** — which Claude surface the spend came from. Only surfaces that
   keep token counts on disk can appear; see "Which surfaces are covered".
-- **Most panels are all-time.** The top row and the Max comparison are
-  windowed, and the Daily chart shows only the **last 30 active days** — each
-  panel states its own range in its heading. Once you have more than 30 active
-  days of history the Daily chart stops at 30 while every "ALL TIME" panel
-  keeps counting everything.
+- **Panels follow the selected range; the top row never does.** The hero row
+  and the plan comparison are always the same four windows, whatever is
+  selected. Everything below the range selector re-scopes, and each panel
+  states its range in its heading. The default is the last 30 days.
+- **caching saved** — what your cache reads *would* have cost at full input
+  rates. A counterfactual, not money that was ever at stake: cache reads bill
+  at 0.1×, so this is the 0.9× you never paid.
+- **on pace** — month-to-date plus the trailing-7-day daily rate over the days
+  remaining. A projection, and the only figure here that can be wrong rather
+  than merely stale. Hidden for the first three days of a month, when the
+  trailing window is mostly last month.
+- **$/hr · idle** — cost over *active* time today, where gaps between messages
+  count for at most five minutes each, so a session left open over lunch does
+  not dilute it. Hidden until there is at least 15 minutes of active time;
+  below that the denominator is too small to divide by and the rate reads
+  wildly high.
 
 Rates live in `dashboard/pricing.py` as a plain table. They will go stale as
 models are released and repriced; editing that table is the whole update.

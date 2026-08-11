@@ -11,6 +11,28 @@ from .models import Bar, DashboardData, DayCost, UsageRecord, Window
 
 UNTITLED = "(untitled session)"
 
+#: Records with no skill attributed. Excluded from the BY SKILL panel: it is
+#: ~90% of spend on real histories, which compresses the skills that do carry
+#: a cost into unreadable slivers. The panel heading says ATTRIBUTED so the
+#: exclusion is visible rather than silently redefining the percentages.
+UNATTRIBUTED_SKILL = "(none)"
+
+#: A gap longer than this counts as "not working" rather than a very slow
+#: message. Without a cap, a session left open overnight dilutes the burn
+#: rate to nothing.
+IDLE_CAP_SECONDS = 300
+
+#: Up to and including this day of the month, a trailing-7-day projection is
+#: mostly last month and says more about it than about this one. On the 3rd,
+#: five of the seven days are still last month's.
+MIN_DAYS_FOR_PACE = 3
+
+#: A rate needs a denominator worth dividing by. The first two messages of a
+#: day are typically seconds apart, and dividing a real cost by two seconds
+#: of "active time" produced $2,219/hr against a true $20.59/hr on live data
+#: — the idle cap guards dilution, this guards the inflation direction.
+MIN_ACTIVE_SECONDS = 900
+
 #: Display names for the surfaces in UsageRecord.source. An unrecognised
 #: source is shown verbatim rather than dropped, so a future surface still
 #: appears on the page before this table learns about it.
@@ -28,6 +50,93 @@ def _bars(totals: dict[str, float], grand_total: float, top_n: int | None) -> li
         Bar(label=label, cost=value, share=(value / grand_total if grand_total else 0.0))
         for label, value in ordered
     ]
+
+
+def _instant(ts: str) -> dt.datetime | None:
+    """A transcript timestamp as an aware UTC datetime.
+
+    Durations are computed in UTC rather than in local wall-clock time.
+    Subtracting naive local times is wrong by the offset across a DST
+    change, and across a fall-back fold two instants an hour apart map to
+    the same local time, so a real gap computes as zero and the burn rate
+    disappears. UTC has neither problem.
+    """
+    if not ts:
+        return None
+    try:
+        moment = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    return moment.astimezone(dt.timezone.utc)
+
+
+def _burn_rate(
+    todays: list[UsageRecord],
+    costs: dict[str, float],
+    now: dt.datetime,
+) -> tuple[float | None, int | None]:
+    """Cost per hour of active time today, and minutes since the last message.
+
+    Active time is the sum of gaps between consecutive messages, each capped
+    at IDLE_CAP_SECONDS. Wall-clock since the first message would be wrong:
+    a session left open overnight would dilute the rate towards zero and the
+    number would say nothing about how expensive the work is.
+
+    Returns (None, None) when there is not enough of today to divide by.
+    """
+    moments = sorted(m for m in (_instant(r.ts) for r in todays) if m is not None)
+    if len(moments) < 2:
+        return None, None
+
+    active_seconds = sum(
+        min((later - earlier).total_seconds(), IDLE_CAP_SECONDS)
+        for earlier, later in zip(moments, moments[1:])
+    )
+    # Too little of the day to divide by. Without this the first two messages
+    # — usually seconds apart — set the headline rate two orders of magnitude
+    # too high, and it stays visibly wrong for tens of minutes.
+    if active_seconds < MIN_ACTIVE_SECONDS:
+        return None, None
+
+    spent = sum(costs[r.message_id] for r in todays)
+    if spent <= 0:
+        # Every message today was on an unpriced model. $0.00/hr reads as a
+        # measurement rather than an absence.
+        return None, None
+
+    # `now` is naive local; compare instants, not wall clocks.
+    now_utc = now.astimezone(dt.timezone.utc) if now.tzinfo else now.astimezone().astimezone(dt.timezone.utc)
+    idle = max(0, int((now_utc - moments[-1]).total_seconds() // 60))
+    return spent / (active_seconds / 3600), idle
+
+
+def _on_pace(
+    per_day: dict[str, float],
+    month_to_date: float,
+    now: dt.datetime,
+) -> float | None:
+    """Month-to-date plus the trailing-7-day rate over the days remaining.
+
+    None for the first MIN_DAYS_FOR_PACE days of a month: a trailing-7-day
+    window is then mostly last month, so the projection describes a month
+    that has ended rather than the one in progress.
+
+    Days with no usage count as zero rather than being skipped — a quiet
+    weekend is part of the rate, not missing data.
+    """
+    if now.day <= MIN_DAYS_FOR_PACE:
+        return None
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    remaining = days_in_month - now.day
+    if remaining <= 0:
+        return month_to_date
+    window = [
+        per_day.get((now.date() - dt.timedelta(days=offset)).isoformat(), 0.0)
+        for offset in range(1, 8)
+    ]
+    return month_to_date + (sum(window) / len(window)) * remaining
 
 
 def _window(label: str, cost: float, messages: int) -> Window:
@@ -128,8 +237,12 @@ def build(
     by_session: dict[str, float] = defaultdict(float)
     by_source: dict[str, float] = defaultdict(float)
     per_day: dict[str, float] = defaultdict(float)
+    # Global, not range-scoped: the plan band talks about this month
+    # regardless of which range the panels below are showing.
+    per_day_all: dict[str, float] = defaultdict(float)
     main_cost = subagent_cost = 0.0
     reads = fresh = 0
+    cache_saved = 0.0
     # All-time totals stay global no matter what range is selected: the
     # hero row is the fixed summary, and only the panels below it move.
     all_time_cost = 0.0
@@ -148,6 +261,7 @@ def build(
         all_time_cost += value
         all_time_messages += 1
         active.add(record.day)
+        per_day_all[record.day] += value
         for name, inside in zip(windows, membership[record.day]):
             if inside:
                 bucket_cost[name] += value
@@ -165,7 +279,8 @@ def build(
 
         by_model[record.model] += value
         by_project[record.project] += value
-        by_skill[record.skill] += value
+        if record.skill != UNATTRIBUTED_SKILL:
+            by_skill[record.skill] += value
         by_session[record.session_id] += value
         by_source[SOURCE_LABELS.get(record.source, record.source)] += value
         per_day[record.day] += value
@@ -176,11 +291,24 @@ def build(
             main_cost += value
         reads += record.cache_read_tokens
         fresh += record.input_tokens
+        # What those cache reads would have cost at full input rates. Cache
+        # reads bill at CACHE_READ_MULTIPLIER, so the saving is the rest.
+        found = pricing.rates_for(record.model, record.speed)
+        if found is not None:
+            per_token_in = found[0] / 1_000_000
+            cache_saved += (
+                record.cache_read_tokens
+                * per_token_in
+                * (1 - pricing.CACHE_READ_MULTIPLIER)
+            )
         scoped_total += value
         scoped_messages += 1
 
     # Shares are within the selected range, so a panel's percentages always
     # add up to what that panel is showing.
+    todays = [r for r in dated if r.day == today_str]
+    burn_rate, idle_minutes = _burn_rate(todays, costs, now)
+
     grand_total = scoped_total
     recent_days = sorted(per_day)[-daily_days:]
 
@@ -210,10 +338,16 @@ def build(
         money=_bars(dict(breakdown), grand_total, None) if grand_total else [],
         by_model=_bars(dict(by_model), grand_total, top_n),
         by_project=_bars(dict(by_project), grand_total, top_n),
-        by_skill=_bars(dict(by_skill), grand_total, top_n),
+        by_skill=_bars(dict(by_skill), sum(by_skill.values()), top_n),
         top_sessions=session_bars,
         daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
         cache_hit_rate=(reads / (reads + fresh) if (reads + fresh) else 0.0),
+        cache_saved=cache_saved,
+        cache_read_tokens=reads,
+        on_pace=_on_pace(per_day_all, bucket_cost["month"], now),
+        burn_rate_hourly=burn_rate,
+        idle_minutes=idle_minutes,
+        today_day=today_str,
         avg_cost_per_message=(grand_total / scoped_messages if scoped_messages else 0.0),
         avg_cost_per_session=(grand_total / len(by_session) if by_session else 0.0),
         unpriced_models=sorted({r.model for r in dated if not pricing.is_priced(r.model)}),

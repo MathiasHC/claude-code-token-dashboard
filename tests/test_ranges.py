@@ -138,12 +138,22 @@ def test_every_range_gets_a_link_and_only_one_is_current():
 
 
 def test_the_default_range_links_without_a_query_string():
-    """?range=all and the bare URL must not be two different cached pages."""
+    """The default range and the bare URL must not be two different cached
+    pages. Written against ranges.DEFAULT rather than a hard-coded key, so
+    changing the default cannot silently create that split."""
     out = render_html.render(
-        aggregate.build(SPREAD, {}, now=NOW, range_key="all"), base_path="/d/tok"
+        aggregate.build(SPREAD, {}, now=NOW, range_key=ranges.DEFAULT.key),
+        base_path="/d/tok",
     )
     assert 'href="/d/tok"' in out
-    assert "range=all" not in out
+    assert f"range={ranges.DEFAULT.key}" not in out
+
+
+def test_every_non_default_range_carries_its_query_string():
+    out = render_html.render(aggregate.build(SPREAD, {}, now=NOW), base_path="/d/tok")
+    for entry in ranges.CATALOGUE:
+        if entry.key != ranges.DEFAULT.key:
+            assert f"?range={entry.key}" in out
 
 
 def test_panel_headings_name_the_selected_range():

@@ -113,10 +113,15 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
             write_1h = int(rng.lognormvariate(8.5, 1.0)) if rng.random() < 0.22 else 0
             write_5m = int(rng.lognormvariate(8.0, 0.9)) if rng.random() < 0.16 else 0
 
+            # Spread through the working day. A fixed timestamp gave every
+            # record on a day the same instant, so active time was zero and
+            # the live burn rate could never appear in the screenshot.
+            offset = dt.timedelta(minutes=rng.randint(0, 9 * 60))
+            stamp = dt.datetime.fromisoformat(f"{day}T08:00:00") + offset
             records.append(
                 UsageRecord(
                     message_id=f"m{len(records)}",
-                    ts=f"{day}T10:00:00.000Z",
+                    ts=stamp.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     day=day,
                     model=model,
                     project=_weighted(rng, PROJECTS),

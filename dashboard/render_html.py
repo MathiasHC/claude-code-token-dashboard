@@ -68,6 +68,8 @@ td.barcell { padding-left:8px; }
 table.daily { width:100%; table-layout:fixed; border-collapse:collapse; }
 table.daily td { vertical-align:bottom; text-align:center; padding:0 1px; }
 .col { background:#238636; }
+.col.today { background:#58a6ff; }
+.titlebar .live { float:right; letter-spacing:0; margin-right:14px; color:#e6edf3; }
 .dscale { font-size:10px; color:#8b949e; }
 """.strip()
 
@@ -127,7 +129,12 @@ def _daily(data: DashboardData) -> str:
     cells = []
     for point in data.daily:
         height = max(1, min(DAILY_CHART_HEIGHT_PX, round(point.cost / peak * DAILY_CHART_HEIGHT_PX)))
-        cells.append(f'<td><div class="col" style="height:{height}px"></div></td>')
+        # One bar out of thirty is the only one still moving; without a
+        # colour it takes a squint to find.
+        today = " today" if point.day and point.day == data.today_day else ""
+        cells.append(
+            f'<td><div class="col{today}" style="height:{height}px"></div></td>'
+        )
     return (
         f'<table class="daily" style="height:{DAILY_CHART_HEIGHT_PX}px">'
         f"<tr>{''.join(cells)}</tr></table>"
@@ -222,6 +229,19 @@ def _bands(data: DashboardData) -> str:
     return f'<table class="bands"><tbody><tr>{row}</tr></tbody></table>'
 
 
+def _pace_clause(data: DashboardData) -> str:
+    """The month-end projection, or nothing.
+
+    Names the method: two defensible ones disagree, by 1% on the reference
+    history but by more in a month containing a real change of behaviour.
+    Kept short — the plan band is one line, and a longer clause wrapped it
+    onto a second, growing the page by 16px.
+    """
+    if not data.on_pace:
+        return ""
+    return f" &middot; on pace {_money(data.on_pace)} (7-day rate)"
+
+
 def _plan_comparison(data: DashboardData) -> str:
     """Month-to-date api-equivalent cost against what the plan actually costs.
 
@@ -233,13 +253,44 @@ def _plan_comparison(data: DashboardData) -> str:
         return (
             f"vs {escape(data.plan_label)} &nbsp; "
             f"{_money(data.month_to_date.cost)} api-equivalent &middot; "
-            "no subscription to compare against"
+            f"no subscription to compare against{_pace_clause(data)}"
         )
     return (
         f"vs {escape(data.plan_label)} &nbsp; {_money(data.month_to_date.cost)} "
         f"api-equivalent / {_money(data.max_plan_monthly_usd)} actual = "
         f'<span class="mult">{data.effective_multiple:.1f}&times;</span> effective'
+        f"{_pace_clause(data)}"
     )
+
+
+def _cache_note(data: DashboardData) -> str:
+    """What caching bought, rather than how often it hit.
+
+    Hit rate is saturated on any real history — measured at 99.68%-100.00%
+    across eight consecutive weeks — so it is a constant dressed as a metric.
+    The saving is the number that moves.
+
+    The qualifier is not optional. "caching saved $15,603" alone reads as
+    money that was once in play; it never was. There is no tooltip on
+    iOS 5.1.1, so the counterfactual has to sit in the visible text.
+    """
+    if data.cache_read_tokens <= 0:
+        return "no cache reads yet"
+    if data.cache_saved <= 0:
+        # Reads happened, but on models with no rate — claiming "no cache
+        # reads yet" would deny something that is on the page above.
+        return "cache reads on unpriced models only"
+    return f"caching saved {_money(data.cache_saved)} &middot; same tokens at uncached rates"
+
+
+def _live(data: DashboardData) -> str:
+    """Burn rate and idle time — the only figures that can differ between two
+    consecutive refreshes. Absent entirely when today is too quiet to divide
+    by, rather than rendering a misleading $0.00/hr."""
+    if data.burn_rate_hourly is None:
+        return ""
+    idle = f" &middot; idle {data.idle_minutes}m" if data.idle_minutes is not None else ""
+    return f'<span class="live">{_money(data.burn_rate_hourly)}/hr{idle}</span>'
 
 
 def _refresh_content(seconds: int) -> str:
@@ -306,7 +357,7 @@ def render(
 <title>Claude Tokens</title>
 <style>{CSS}</style>
 </head><body>
-<div class="titlebar">CLAUDE TOKENS<span class="when">{escape(data.generated_at)}</span></div>
+<div class="titlebar">CLAUDE TOKENS<span class="when">{escape(data.generated_at)}</span>{_live(data)}</div>
 {banner}
 <table class="hero"><tr>
 {_hero_cell("TODAY", data.today, change=data.day_change, comparison="vs yesterday")}
@@ -324,14 +375,14 @@ def render(
 <table class="grid"><tbody>
 <tr>
 <td><h2>WHERE THE MONEY GOES &middot; {escape(data.range_label)}</h2>{_rows(data.money)}
-<div class="note">cache hit rate {_pct(data.cache_hit_rate)}</div></td>
+<div class="note">{_cache_note(data)}</div></td>
 <td><h2>BY MODEL &middot; {escape(data.range_label)}</h2>{_rows(data.by_model)}
 <div class="note">avg {_money(data.avg_cost_per_message)}/msg &middot;
 {_money(data.avg_cost_per_session)}/session</div>{unpriced}</td>
 </tr>
 <tr>
 <td><h2>BY PROJECT &middot; {escape(data.range_label)}</h2>{_rows(data.by_project)}</td>
-<td><h2>BY SKILL &middot; {escape(data.range_label)}</h2>{_rows(data.by_skill)}</td>
+<td><h2>BY SKILL &middot; {escape(data.range_label)} &middot; ATTRIBUTED</h2>{_rows(data.by_skill)}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
