@@ -5,120 +5,151 @@ having any real usage on the machine:
 
     python3 tools/demo_page.py /tmp/demo.html
 
-Every figure below is invented. The shape is meant to be representative of
-heavy agentic use — cache reads dominating cost, a long tail of models and
-projects, most spend outside any named skill — so the screenshot shows what
-a populated dashboard looks like rather than a near-empty one.
+Every figure is invented, but nothing here is hand-written: this builds a
+few thousand fake `UsageRecord`s and runs them through the real
+`aggregate.build`, so the totals, shares, averages and cache-hit rate are
+all derived exactly the way the live dashboard derives them.
+
+That matters for more than tidiness. An earlier version wrote the panel
+figures directly, back-computed from round percentages, and the result was
+obviously fake — every share landed on an exact tenth (63.0%, 20.0%, 13.0%,
+4.0%). Real usage never does that. Deriving from records produces the
+uneven numbers a real week actually looks like.
+
+Seeded, so the same page comes out every time.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import random
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dashboard import render_html  # noqa: E402
-from dashboard.models import Bar, DashboardData, DayCost, Window  # noqa: E402
+from dashboard import aggregate, render_html  # noqa: E402
+from dashboard.models import UsageRecord  # noqa: E402
 
-ALL_TIME = 4182.55
+SEED = 20260807
+NOW = dt.datetime(2026, 8, 21, 9, 41, 0)
+ACTIVE_DAYS = 96
 
-# Cost is overwhelmingly cache reads on real agentic workloads: every turn
-# replays the conversation, and replay bills at 0.1x input.
-MONEY = [
-    ("cache read", 2634.01),
-    ("output", 836.51),
-    ("cache write", 543.73),
-    ("fresh input", 168.30),
+# Weighted so one project dominates the way real work does, rather than
+# everything being suspiciously even.
+PROJECTS = [
+    ("api-gateway", 34),
+    ("mobile-app", 23),
+    ("data-pipeline", 17),
+    ("infra-terraform", 14),
+    ("docs-site", 8),
+    ("scratch", 4),
 ]
-BY_MODEL = [
-    ("claude-opus-5", 2341.23),
-    ("claude-sonnet-5", 920.16),
-    ("claude-opus-4-8", 585.56),
-    ("claude-fable-5", 251.00),
-    ("claude-haiku-4-5", 84.60),
+MODELS = [
+    ("claude-opus-5", 42),
+    ("claude-sonnet-5", 28),
+    ("claude-opus-4-8", 16),
+    ("claude-fable-5", 9),
+    ("claude-haiku-4-5", 5),
 ]
-BY_PROJECT = [
-    ("api-gateway", 1463.89),
-    ("mobile-app", 1003.81),
-    ("data-pipeline", 669.21),
-    ("infra-terraform", 460.08),
-    ("docs-site", 292.78),
+SKILLS = [
+    ("(none)", 46),
+    ("brainstorming", 19),
+    ("test-driven-development", 14),
+    ("code-review", 12),
+    ("systematic-debugging", 9),
 ]
-BY_SKILL = [
-    ("(none)", 1881.15),
-    ("brainstorming", 836.51),
-    ("test-driven-development", 585.56),
-    ("code-review", 418.26),
-    ("systematic-debugging", 209.13),
-]
-BY_SOURCE = [
-    ("Claude Code", 3554.17),
-    ("Desktop (Cowork)", 628.38),
-]
-TOP_SESSIONS = [
-    ("Migrate the billing service off the legacy queue", 184.20),
-    ("/tdd add idempotency keys to the payments endpoint", 141.77),
-    ("Investigate the p99 latency regression in the gateway", 118.03),
-    ("Rewrite the onboarding flow for the mobile app", 96.44),
-    ("(untitled session)", 72.10),
-]
+SOURCES = [("code", 86), ("cowork", 14)]
 
-# 30 days, weekends visibly lower — a flat series looks synthetic.
-DAILY = [
-    ("2026-07-08", 41.20), ("2026-07-09", 52.75), ("2026-07-10", 47.13),
-    ("2026-07-11", 18.44), ("2026-07-12", 9.02),  ("2026-07-13", 33.87),
-    ("2026-07-14", 55.61), ("2026-07-15", 61.94), ("2026-07-16", 44.28),
-    ("2026-07-17", 39.75), ("2026-07-18", 14.60), ("2026-07-19", 6.31),
-    ("2026-07-20", 28.49), ("2026-07-21", 50.02), ("2026-07-22", 58.36),
-    ("2026-07-23", 46.71), ("2026-07-24", 35.18), ("2026-07-25", 21.93),
-    ("2026-07-26", 11.07), ("2026-07-27", 30.66), ("2026-07-28", 48.85),
-    ("2026-07-29", 57.40), ("2026-07-30", 43.12), ("2026-07-31", 37.29),
-    ("2026-08-01", 16.85), ("2026-08-02", 8.44),  ("2026-08-03", 34.51),
-    ("2026-08-04", 53.08), ("2026-08-05", 49.66), ("2026-08-06", 38.42),
+SESSION_TITLES = [
+    "Migrate the billing service off the legacy queue",
+    "/tdd add idempotency keys to the payments endpoint",
+    "Investigate the p99 latency regression in the gateway",
+    "Rewrite the onboarding flow for the mobile app",
+    "Backfill the events table without locking writes",
+    "/code-review the auth refactor before it ships",
+    "Trace why the nightly export silently drops rows",
+    "Split the monolith's config into per-service files",
+    "Add retry semantics to the webhook dispatcher",
+    "Work out why staging costs 4x what production does",
 ]
 
 
-def _bars(rows: list[tuple[str, float]]) -> list[Bar]:
-    return [Bar(label=name, cost=cost, share=cost / ALL_TIME) for name, cost in rows]
+def _weighted(rng: random.Random, table: list[tuple[str, int]]) -> str:
+    return rng.choices([name for name, _ in table], weights=[w for _, w in table])[0]
 
 
-def demo_data() -> DashboardData:
-    return DashboardData(
-        generated_at="06 Aug 2026 09:41",
-        today=Window(label="today", cost=38.42, messages=214),
-        last_7_days=Window(label="7 days", cost=291.18, messages=1_584),
-        month_to_date=Window(label="month to date", cost=612.90, messages=3_320),
-        all_time=Window(label="all time", cost=ALL_TIME, messages=25_472),
-        active_days=96,
-        max_plan_monthly_usd=200.0,
-        prev_month_label="2026-07",
-        prev_month_cost=1_204.83,
-        yesterday_cost=34.18,
-        prior_7_days_cost=317.50,
-        prev_month_to_date_cost=502.00,
-        money=_bars(MONEY),
-        by_model=_bars(BY_MODEL),
-        by_project=_bars(BY_PROJECT),
-        by_skill=_bars(BY_SKILL),
-        by_source=_bars(BY_SOURCE),
-        top_sessions=[
-            Bar(label=title, cost=cost, share=cost / ALL_TIME)
-            for title, cost in TOP_SESSIONS
-        ],
-        daily=[DayCost(day=day, cost=cost) for day, cost in DAILY],
-        cache_hit_rate=0.9871,
-        avg_cost_per_message=0.1642,
-        avg_cost_per_session=8.94,
-        main_cost=2_718.66,
-        subagent_cost=1_463.89,
-    )
+def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]:
+    records: list[UsageRecord] = []
+
+    # A fixed pool of named sessions, weighted so a few long-running ones
+    # dominate. Spawning a fresh anonymous session per burst instead left
+    # the "top sessions" panel showing five untitled rows worth pennies —
+    # technically correct and completely uninformative.
+    titles = {f"sess-{i}": title for i, title in enumerate(SESSION_TITLES)}
+    session_ids = list(titles)
+    session_weights = [round(1 / (i + 1) ** 0.7, 4) for i in range(len(session_ids))]
+
+    for day_offset in range(ACTIVE_DAYS - 1, -1, -1):
+        day = (NOW.date() - dt.timedelta(days=day_offset)).isoformat()
+        weekend = dt.date.fromisoformat(day).weekday() >= 5
+        # Weekends are quieter, and effort drifts rather than being uniform.
+        base = rng.randint(4, 40) if weekend else rng.randint(90, 340)
+        # Occasional heavy day — a migration, an incident.
+        if not weekend and rng.random() < 0.12:
+            base = int(base * rng.uniform(1.6, 2.4))
+
+        for _ in range(base):
+            session_id = rng.choices(session_ids, weights=session_weights)[0]
+
+            model = _weighted(rng, MODELS)
+            # Context replay dominates cost on agentic workloads, so these
+            # are calibrated to land near the split real usage shows: cache
+            # reads around three fifths, output a fifth, writes a little
+            # over a tenth, fresh input a sliver.
+            cache_read = int(rng.lognormvariate(12.35, 0.6))
+            output = int(rng.lognormvariate(7.4, 0.8))
+            fresh = int(rng.lognormvariate(6.8, 1.0))
+            write_1h = int(rng.lognormvariate(8.5, 1.0)) if rng.random() < 0.22 else 0
+            write_5m = int(rng.lognormvariate(8.0, 0.9)) if rng.random() < 0.16 else 0
+
+            records.append(
+                UsageRecord(
+                    message_id=f"m{len(records)}",
+                    ts=f"{day}T10:00:00.000Z",
+                    day=day,
+                    model=model,
+                    project=_weighted(rng, PROJECTS),
+                    skill=_weighted(rng, SKILLS),
+                    session_id=session_id,
+                    input_tokens=fresh,
+                    output_tokens=output,
+                    cache_read_tokens=cache_read,
+                    cache_write_5m=write_5m,
+                    cache_write_1h=write_1h,
+                    speed="standard",
+                    is_subagent=rng.random() < 0.33,
+                    source=_weighted(rng, SOURCES),
+                )
+            )
+
+    return records, titles
+
+
+def demo_data():
+    rng = random.Random(SEED)
+    records, titles = demo_records(rng)
+    return aggregate.build(records, titles, now=NOW)
 
 
 def main() -> None:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "demo.html")
-    out.write_text(render_html.render(demo_data()), encoding="utf-8")
-    print(out)
+    data = demo_data()
+    out.write_text(render_html.render(data), encoding="utf-8")
+    print(
+        f"{out}  ({data.all_time.messages:,} messages, "
+        f"${data.all_time.cost:,.2f} all time)"
+    )
 
 
 if __name__ == "__main__":
