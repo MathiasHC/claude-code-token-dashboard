@@ -22,6 +22,27 @@ Everything stays on your machine: no account, no telemetry, no network calls.
 `python3 tools/demo_page.py demo.html` and open the file — a way to see the
 layout before you have any history of your own.*
 
+**What it shows, top to bottom:**
+
+- **Live burn rate** — `$8.03/hr · idle 0m` in the titlebar. Cost per hour of
+  *active* time today; the only figure that changes between two refreshes.
+- **Four windows** — today, last 7 days, month to date, all time, each with a
+  message count and a like-for-like delta (vs yesterday, vs the prior 7 days,
+  vs the same point last month).
+- **What it would cost vs what you pay** — your api-equivalent spend against
+  your actual plan, the resulting multiple, and where the month is **on pace**
+  to land.
+- **Delegation** — how much of the spend came from subagents rather than from
+  your own turns.
+- **By source** — Claude Code vs Claude Desktop (Cowork).
+- **A date range you can pick** — today / 7 days / 30 days / this month / all
+  time, as plain links. Everything below re-scopes; the top row never moves.
+- **Where the money goes** — cache read vs output vs cache write vs fresh
+  input, and what caching saved you.
+- **By model, project, skill and session** — which models, repos, skills and
+  individual pieces of work cost the most.
+- **A daily chart** — the last 30 active days, with today picked out.
+
 ## Requirements
 
 Python 3.11 or newer, and Claude Code installed and used at least once — the
@@ -84,10 +105,10 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024**. It is currently about **875px
-tall**, so on a 1024×768 display the daily chart sits just below the fold and
-needs a short scroll — measured, not estimated. Everything above it, including
-the hero row and the range selector, is visible without scrolling.
+The page is laid out for a width of **1024** and is **747px tall**, so all of
+it — including the daily chart — fits a 1024×768 screen without scrolling.
+Measured in a 1024-wide frame, not estimated. It was 875px until the top
+sessions and daily panels were put side by side rather than stacked.
 
 ### 2. A Raspberry Pi driving a small screen
 
