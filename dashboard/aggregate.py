@@ -6,8 +6,9 @@ import calendar
 import datetime as dt
 from collections import Counter, defaultdict
 
-from . import pricing, ranges
-from .models import Bar, DashboardData, DayCost, UsageRecord, Window
+from . import plans, pricing, ranges
+from .dates import instant
+from .models import Bar, DashboardData, DayCost, Plan, RangeView, UsageRecord, Window
 
 UNTITLED = "(untitled session)"
 
@@ -33,9 +34,21 @@ MIN_DAYS_FOR_PACE = 3
 #: — the idle cap guards dilution, this guards the inflation direction.
 MIN_ACTIVE_SECONDS = 900
 
+#: Most recent days plotted in the daily chart, and rows kept in a breakdown
+#: panel. Fixed rather than parameters: production never varied either, and
+#: as arguments their only effect was to let two tests assert against a
+#: smaller number than the page actually renders.
+DAILY_DAYS = 30
+TOP_N = 5
+
 #: Display names for the surfaces in UsageRecord.source. An unrecognised
 #: source is shown verbatim rather than dropped, so a future surface still
 #: appears on the page before this table learns about it.
+#:
+#: Kept here, next to the panel it labels, rather than beside
+#: ingest.default_sources: aggregate is pure, and importing ingest to reach
+#: the roots table would pull scan and cowork — and their filesystem access —
+#: into this module's import graph. See docs/adr/0001-source-table-split.md.
 SOURCE_LABELS = {
     "code": "Claude Code",
     "cowork": "Desktop (Cowork)",
@@ -52,26 +65,6 @@ def _bars(totals: dict[str, float], grand_total: float, top_n: int | None) -> li
     ]
 
 
-def _instant(ts: str) -> dt.datetime | None:
-    """A transcript timestamp as an aware UTC datetime.
-
-    Durations are computed in UTC rather than in local wall-clock time.
-    Subtracting naive local times is wrong by the offset across a DST
-    change, and across a fall-back fold two instants an hour apart map to
-    the same local time, so a real gap computes as zero and the burn rate
-    disappears. UTC has neither problem.
-    """
-    if not ts:
-        return None
-    try:
-        moment = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=dt.timezone.utc)
-    return moment.astimezone(dt.timezone.utc)
-
-
 def _burn_rate(
     todays: list[UsageRecord],
     costs: dict[str, float],
@@ -86,7 +79,7 @@ def _burn_rate(
 
     Returns (None, None) when there is not enough of today to divide by.
     """
-    moments = sorted(m for m in (_instant(r.ts) for r in todays) if m is not None)
+    moments = sorted(m for m in (instant(r.ts) for r in todays) if m is not None)
     if len(moments) < 2:
         return None, None
 
@@ -139,20 +132,13 @@ def _on_pace(
     return month_to_date + (sum(window) / len(window)) * remaining
 
 
-def _window(label: str, cost: float, messages: int) -> Window:
-    return Window(label=label, cost=cost, messages=messages)
-
-
 def build(
     records: list[UsageRecord],
     titles: dict[str, str],
     *,
     now: dt.datetime,
-    max_plan_monthly_usd: float = pricing.MAX_PLAN_MONTHLY_USD,
-    plan_label: str = "Max 20×",
+    plan: Plan = plans.DEFAULT,
     range_key: str | None = None,
-    daily_days: int = 30,
-    top_n: int = 5,
 ) -> DashboardData:
     dated = [r for r in records if r.day]
     # Costed once per record, not once here and again for the money
@@ -162,66 +148,32 @@ def build(
     costs = {message_id: parts.total for message_id, parts in parts_by_id.items()}
 
     today_str = now.date().isoformat()
-    month_prefix = now.strftime("%Y-%m")
-    first_of_month = now.date().replace(day=1)
-    prev_month_label = (first_of_month - dt.timedelta(days=1)).strftime("%Y-%m")
+    prev_month_label = ranges.previous_month_label(now)
 
-    def within_7_days(day: str) -> bool:
-        try:
-            parsed = dt.date.fromisoformat(day)
-        except ValueError:
-            return False
-        return 0 <= (now.date() - parsed).days < 7
+    # Every window on the page comes from `ranges`, including the hero row's
+    # comparisons. They used to be re-derived here, each with its own copy of
+    # the malformed-day handling.
+    selected = ranges.resolve(range_key)
+    in_selected_range = ranges.contains(selected, now)
 
-    def within_prior_7_days(day: str) -> bool:
-        try:
-            parsed = dt.date.fromisoformat(day)
-        except ValueError:
-            return False
-        return 7 <= (now.date() - parsed).days < 14
-
-    def is_yesterday(day: str) -> bool:
-        try:
-            parsed = dt.date.fromisoformat(day)
-        except ValueError:
-            return False
-        return parsed == now.date() - dt.timedelta(days=1)
-
-    # Previous month to date: same number of days into the previous month,
-    # clamped to that month's actual length (e.g. 31 March compares against
-    # all of February, not a partial or empty window).
-    prev_month_end = first_of_month - dt.timedelta(days=1)
-    days_in_prev_month = calendar.monthrange(prev_month_end.year, prev_month_end.month)[1]
-    prev_month_to_date_cutoff = min(now.day, days_in_prev_month)
-
-    def is_prev_month_to_date(day: str) -> bool:
-        if not day.startswith(prev_month_label):
-            return False
-        try:
-            parsed = dt.date.fromisoformat(day)
-        except ValueError:
-            return False
-        return parsed.day <= prev_month_to_date_cutoff
+    windows = ("today", "week", "month", "prev_month", "yesterday", "prior_7", "prev_mtd")
+    tests = (
+        ranges.is_today(now),
+        ranges.within_last(7, now),
+        ranges.in_month(now),
+        ranges.in_previous_month(now),
+        ranges.is_yesterday(now),
+        ranges.within_prior(7, now),
+        ranges.in_previous_month_to_date(now),
+    )
 
     # Classify each *distinct* day once, then bucket the records in a single
     # pass. The obvious form — one list comprehension per window — walks the
     # whole history seven times and re-parses every record's date in each,
     # which on real data was ~90_000 fromisoformat calls to answer questions
     # about 42 distinct days.
-    selected = ranges.resolve(range_key)
-    in_selected_range = ranges.contains(selected, now)
-
-    windows = ("today", "week", "month", "prev_month", "yesterday", "prior_7", "prev_mtd")
     membership = {
-        day: (
-            day == today_str,
-            within_7_days(day),
-            day.startswith(month_prefix),
-            day.startswith(prev_month_label),
-            is_yesterday(day),
-            within_prior_7_days(day),
-            is_prev_month_to_date(day),
-        )
+        day: tuple(test(day) for test in tests)
         for day in {r.day for r in dated}
     }
     # Scoping is one more per-day lookup rather than a second filtering
@@ -241,7 +193,7 @@ def build(
     # regardless of which range the panels below are showing.
     per_day_all: dict[str, float] = defaultdict(float)
     main_cost = subagent_cost = 0.0
-    reads = fresh = 0
+    reads = 0
     cache_saved = 0.0
     # All-time totals stay global no matter what range is selected: the
     # hero row is the fixed summary, and only the panels below it move.
@@ -290,17 +242,13 @@ def build(
         else:
             main_cost += value
         reads += record.cache_read_tokens
-        fresh += record.input_tokens
         # What those cache reads would have cost at full input rates. Cache
-        # reads bill at CACHE_READ_MULTIPLIER, so the saving is the rest.
-        found = pricing.rates_for(record.model, record.speed)
-        if found is not None:
-            per_token_in = found[0] / 1_000_000
-            cache_saved += (
-                record.cache_read_tokens
-                * per_token_in
-                * (1 - pricing.CACHE_READ_MULTIPLIER)
-            )
+        # reads bill at CACHE_READ_MULTIPLIER of the input rate, so the part
+        # never spent is the rest of it — already priced, in parts.cache_read,
+        # rather than worth a second rates_for() lookup per record.
+        cache_saved += parts.cache_read * (
+            (1 - pricing.CACHE_READ_MULTIPLIER) / pricing.CACHE_READ_MULTIPLIER
+        )
         scoped_total += value
         scoped_messages += 1
 
@@ -310,7 +258,7 @@ def build(
     burn_rate, idle_minutes = _burn_rate(todays, costs, now)
 
     grand_total = scoped_total
-    recent_days = sorted(per_day)[-daily_days:]
+    recent_days = sorted(per_day)[-DAILY_DAYS:]
 
     session_bars = [
         Bar(
@@ -318,44 +266,46 @@ def build(
             cost=value,
             share=(value / grand_total if grand_total else 0.0),
         )
-        for session_id, value in sorted(by_session.items(), key=lambda item: item[1], reverse=True)[:top_n]
+        for session_id, value in sorted(by_session.items(), key=lambda item: item[1], reverse=True)[:TOP_N]
     ]
+
+    scoped = RangeView(
+        key=selected.key,
+        label=selected.panel_label,
+        money=_bars(dict(breakdown), grand_total, None) if grand_total else [],
+        by_model=_bars(dict(by_model), grand_total, TOP_N),
+        by_project=_bars(dict(by_project), grand_total, TOP_N),
+        by_skill=_bars(dict(by_skill), sum(by_skill.values()), TOP_N),
+        # Every surface, not a top-N: a source that has been dropped off the
+        # page is indistinguishable from one costing nothing.
+        by_source=_bars(dict(by_source), grand_total, None),
+        top_sessions=session_bars,
+        daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
+        main_cost=main_cost,
+        subagent_cost=subagent_cost,
+        cache_saved=cache_saved,
+        cache_read_tokens=reads,
+        avg_cost_per_message=(grand_total / scoped_messages if scoped_messages else 0.0),
+        avg_cost_per_session=(grand_total / len(by_session) if by_session else 0.0),
+    )
 
     return DashboardData(
         generated_at=now.strftime("%d %b %Y %H:%M"),
-        today=_window("today", bucket_cost["today"], bucket_count["today"]),
-        last_7_days=_window("7 days", bucket_cost["week"], bucket_count["week"]),
-        month_to_date=_window("month to date", bucket_cost["month"], bucket_count["month"]),
-        all_time=_window("all time", all_time_cost, all_time_messages),
+        today=Window(bucket_cost["today"], bucket_count["today"]),
+        last_7_days=Window(bucket_cost["week"], bucket_count["week"]),
+        month_to_date=Window(bucket_cost["month"], bucket_count["month"]),
+        all_time=Window(all_time_cost, all_time_messages),
         active_days=len(active),
-        max_plan_monthly_usd=max_plan_monthly_usd,
-        plan_label=plan_label,
+        plan=plan,
         prev_month_label=prev_month_label,
         prev_month_cost=bucket_cost["prev_month"],
         yesterday_cost=bucket_cost["yesterday"],
         prior_7_days_cost=bucket_cost["prior_7"],
         prev_month_to_date_cost=bucket_cost["prev_mtd"],
-        money=_bars(dict(breakdown), grand_total, None) if grand_total else [],
-        by_model=_bars(dict(by_model), grand_total, top_n),
-        by_project=_bars(dict(by_project), grand_total, top_n),
-        by_skill=_bars(dict(by_skill), sum(by_skill.values()), top_n),
-        top_sessions=session_bars,
-        daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
-        cache_hit_rate=(reads / (reads + fresh) if (reads + fresh) else 0.0),
-        cache_saved=cache_saved,
-        cache_read_tokens=reads,
+        scoped=scoped,
         on_pace=_on_pace(per_day_all, bucket_cost["month"], now),
         burn_rate_hourly=burn_rate,
         idle_minutes=idle_minutes,
         today_day=today_str,
-        avg_cost_per_message=(grand_total / scoped_messages if scoped_messages else 0.0),
-        avg_cost_per_session=(grand_total / len(by_session) if by_session else 0.0),
         unpriced_models=sorted({r.model for r in dated if not pricing.is_priced(r.model)}),
-        range_key=selected.key,
-        range_label=selected.panel_label,
-        main_cost=main_cost,
-        subagent_cost=subagent_cost,
-        # Every surface, not a top-N: a source that has been dropped off the
-        # page is indistinguishable from one costing nothing.
-        by_source=_bars(dict(by_source), grand_total, None),
     )

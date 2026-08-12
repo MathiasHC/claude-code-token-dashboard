@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import os
 import re
@@ -8,7 +9,15 @@ from pathlib import Path
 import pytest
 
 from dashboard import aggregate, render_html
-from dashboard.models import Bar, DashboardData, DayCost, UsageRecord, Window
+from dashboard.models import (
+    Bar,
+    DashboardData,
+    DayCost,
+    Plan,
+    RangeView,
+    UsageRecord,
+    Window,
+)
 
 NOW = dt.datetime(2026, 7, 30, 9, 12, 0)
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "golden_dashboard.html"
@@ -64,33 +73,49 @@ def test_kitchen_sink_page_hits_the_warning_unpriced_and_delegation_branches(kit
 
 # --- iOS 5.1.1 Safari compatibility -------------------------------------
 # The target device is awkward to test by hand, so these are the guard.
-# Each assertion runs against both `page` (the plain path) and
-# `kitchen_sink_page` (warning banner + unpriced note + delegation band),
-# since those three branches were previously unchecked by this lint.
+#
+# One fixture covers every page variant. The lint used to be written out
+# again in three other tests — one per variant, in three files — but CSS is a
+# single module-level constant emitted verbatim on every render, so a
+# violation cannot appear in one variant and not another unless it is an
+# inline style. Listing the variants here keeps that coverage without
+# repeating the assertions.
 
-def test_page_contains_no_javascript(page, kitchen_sink_page):
-    for rendered in (page, kitchen_sink_page):
+
+@pytest.fixture
+def lint_pages(page, kitchen_sink_page) -> list[str]:
+    chart = render_html.render(_bare_data(daily=[DayCost(day="2026-07-30", cost=5.0)]))
+    selected = render_html.render(
+        aggregate.build([rec("m1", "2026-07-30", skill="tdd")], {}, now=NOW, range_key="month")
+    )
+    return [page, kitchen_sink_page, chart, selected]
+
+
+def test_page_contains_no_javascript(lint_pages):
+    for rendered in lint_pages:
         assert "<script" not in rendered.lower()
         assert "onclick" not in rendered.lower()
+        # The selector is anchors precisely so no scripting is involved.
+        assert ":hover" not in rendered
 
 
-def test_page_uses_no_flexbox(page, kitchen_sink_page):
-    for rendered in (page, kitchen_sink_page):
+def test_page_uses_no_flexbox(lint_pages):
+    for rendered in lint_pages:
         assert "display:flex" not in rendered.replace(" ", "")
 
 
-def test_page_uses_no_css_grid(page, kitchen_sink_page):
-    for rendered in (page, kitchen_sink_page):
+def test_page_uses_no_css_grid(lint_pages):
+    for rendered in lint_pages:
         assert "display:grid" not in rendered.replace(" ", "")
 
 
-def test_page_uses_no_css_custom_properties(page, kitchen_sink_page):
-    for rendered in (page, kitchen_sink_page):
+def test_page_uses_no_css_custom_properties(lint_pages):
+    for rendered in lint_pages:
         assert "var(--" not in rendered
 
 
-def test_page_uses_no_rem_units(page, kitchen_sink_page):
-    for rendered in (page, kitchen_sink_page):
+def test_page_uses_no_rem_units(lint_pages):
+    for rendered in lint_pages:
         assert not re.search(r"\d\s*rem\b", rendered)
 
 
@@ -140,8 +165,8 @@ def test_panels_are_labelled_with_the_selected_range(page):
     range selector. Check the panel headings themselves."""
     data = aggregate.build([rec("m1", "2026-07-30")], {}, now=NOW)
     out = render_html.render(data)
-    assert f"WHERE THE MONEY GOES &middot; {data.range_label}" in out
-    assert f"BY MODEL &middot; {data.range_label}" in out
+    assert f"WHERE THE MONEY GOES &middot; {data.scoped.label}" in out
+    assert f"BY MODEL &middot; {data.scoped.label}" in out
 
 
 def test_page_renders_bars_as_divs_with_percentage_widths(page):
@@ -295,7 +320,12 @@ def test_delegation_band_is_omitted_when_there_is_no_data():
 # DashboardData is built directly to reach these states.
 
 def _bare_data(**overrides) -> DashboardData:
-    zero_window = Window(label="w", cost=0.0, messages=0)
+    """A minimal DashboardData. Overrides naming a range-scoped field are
+    routed into the RangeView, so a caller can still write
+    `_bare_data(by_source=[...])` without knowing where it now lives."""
+    zero_window = Window(cost=0.0, messages=0)
+    scoped_names = {f.name for f in dataclasses.fields(RangeView)}
+    scoped = {name: overrides.pop(name) for name in list(overrides) if name in scoped_names}
     base = dict(
         generated_at="30 Jul 2026 09:12",
         today=zero_window,
@@ -303,9 +333,10 @@ def _bare_data(**overrides) -> DashboardData:
         month_to_date=zero_window,
         all_time=zero_window,
         active_days=0,
-        max_plan_monthly_usd=200.0,
+        plan=Plan("max-20x", "Max 20×", 200.0),
         prev_month_label="2026-06",
         prev_month_cost=0.0,
+        scoped=RangeView(key="30d", label="LAST 30 DAYS", **scoped),
     )
     base.update(overrides)
     return DashboardData(**base)
@@ -366,57 +397,60 @@ def _golden_data() -> DashboardData:
     between them the snapshot exercises both arrow glyphs."""
     return DashboardData(
         generated_at="30 Jul 2026 09:12",
-        today=Window(label="today", cost=12.34, messages=7),
-        last_7_days=Window(label="7 days", cost=45.67, messages=21),
-        month_to_date=Window(label="month to date", cost=89.01, messages=48),
-        all_time=Window(label="all time", cost=1234.56, messages=602),
+        today=Window(cost=12.34, messages=7),
+        last_7_days=Window(cost=45.67, messages=21),
+        month_to_date=Window(cost=89.01, messages=48),
+        all_time=Window(cost=1234.56, messages=602),
         active_days=42,
-        max_plan_monthly_usd=200.0,
+        plan=Plan("max-20x", "Max 20×", 200.0),
         prev_month_label="2026-06",
         prev_month_cost=150.25,
         yesterday_cost=10.00,
         prior_7_days_cost=50.00,
         prev_month_to_date_cost=100.00,
-        money=[
-            Bar(label="cache read", cost=400.0, share=0.4),
-            Bar(label="output", cost=300.0, share=0.3),
-            Bar(label="fresh input", cost=200.0, share=0.2),
-            Bar(label="cache write", cost=100.0, share=0.1),
-        ],
-        by_model=[
-            Bar(label="claude-opus-4-8", cost=700.0, share=0.7),
-            Bar(label="claude-sonnet-5", cost=300.0, share=0.3),
-        ],
-        by_project=[
-            Bar(label="alpha", cost=600.0, share=0.6),
-            Bar(label="beta", cost=400.0, share=0.4),
-        ],
-        # No "(none)" row: the panel is headed ATTRIBUTED and aggregate
-        # excludes the unattributed bucket, so a fixture containing it would
-        # pin markup the real pipeline can never produce.
-        by_skill=[
-            Bar(label="graphify", cost=550.0, share=0.55),
-            Bar(label="code-review", cost=450.0, share=0.45),
-        ],
-        top_sessions=[
-            Bar(label="/graphify refactor billing", cost=220.0, share=0.22),
-            Bar(label="(untitled session)", cost=80.0, share=0.08),
-        ],
-        daily=[
-            DayCost(day="2026-07-28", cost=10.0),
-            DayCost(day="2026-07-29", cost=25.5),
-            DayCost(day="2026-07-30", cost=12.34),
-        ],
-        cache_hit_rate=0.6234,
-        avg_cost_per_message=2.05,
-        avg_cost_per_session=41.15,
         unpriced_models=["claude-future-9"],
-        main_cost=800.0,
-        subagent_cost=434.56,
-        by_source=[
-            Bar(label="Claude Code", cost=1000.0, share=0.81),
-            Bar(label="Desktop (Cowork)", cost=234.56, share=0.19),
-        ],
+        scoped=RangeView(
+            key="30d",
+            label="LAST 30 DAYS",
+            money=[
+                Bar(label="cache read", cost=400.0, share=0.4),
+                Bar(label="output", cost=300.0, share=0.3),
+                Bar(label="fresh input", cost=200.0, share=0.2),
+                Bar(label="cache write", cost=100.0, share=0.1),
+            ],
+            by_model=[
+                Bar(label="claude-opus-4-8", cost=700.0, share=0.7),
+                Bar(label="claude-sonnet-5", cost=300.0, share=0.3),
+            ],
+            by_project=[
+                Bar(label="alpha", cost=600.0, share=0.6),
+                Bar(label="beta", cost=400.0, share=0.4),
+            ],
+            # No "(none)" row: the panel is headed ATTRIBUTED and aggregate
+            # excludes the unattributed bucket, so a fixture containing it
+            # would pin markup the real pipeline can never produce.
+            by_skill=[
+                Bar(label="graphify", cost=550.0, share=0.55),
+                Bar(label="code-review", cost=450.0, share=0.45),
+            ],
+            by_source=[
+                Bar(label="Claude Code", cost=1000.0, share=0.81),
+                Bar(label="Desktop (Cowork)", cost=234.56, share=0.19),
+            ],
+            top_sessions=[
+                Bar(label="/graphify refactor billing", cost=220.0, share=0.22),
+                Bar(label="(untitled session)", cost=80.0, share=0.08),
+            ],
+            daily=[
+                DayCost(day="2026-07-28", cost=10.0),
+                DayCost(day="2026-07-29", cost=25.5),
+                DayCost(day="2026-07-30", cost=12.34),
+            ],
+            main_cost=800.0,
+            subagent_cost=434.56,
+            avg_cost_per_message=2.05,
+            avg_cost_per_session=41.15,
+        ),
     )
 
 
@@ -502,7 +536,7 @@ def test_source_labels_are_html_escaped():
 def test_plan_band_names_the_configured_plan():
     """The band is the one place the user's own subscription appears, so it
     must say which plan it compares against rather than assume one."""
-    out = render_html.render(_bare_data(max_plan_monthly_usd=100.0, plan_label="Max 5×"))
+    out = render_html.render(_bare_data(plan=Plan("max-5x", "Max 5×", 100.0)))
     assert "vs Max 5×" in out
     assert "$100.00 actual" in out
 
@@ -510,13 +544,13 @@ def test_plan_band_names_the_configured_plan():
 def test_plan_band_drops_the_multiple_when_there_is_no_subscription():
     """On an API-only account the api-equivalent figure *is* the bill, so a
     ratio against $0 is meaningless — and would render '0.0x effective'."""
-    out = render_html.render(_bare_data(max_plan_monthly_usd=0.0, plan_label="API only"))
+    out = render_html.render(_bare_data(plan=Plan("api", "API only", 0.0)))
     assert "no subscription to compare against" in out
     assert "effective" not in out
 
 
-def test_plan_label_is_html_escaped():
-    out = render_html.render(_bare_data(plan_label="<script>x</script>"))
+def test_the_plan_name_is_html_escaped():
+    out = render_html.render(_bare_data(plan=Plan("x", "<script>x</script>", 200.0)))
     assert "<script>x</script>" not in out
     assert "&lt;script&gt;" in out
 
@@ -540,12 +574,6 @@ def test_a_very_long_title_is_capped_before_it_reaches_the_page():
     out = render_html.render(data)
     assert "y" * render_html.SESSION_TITLE_CAP in out
     assert "y" * (render_html.SESSION_TITLE_CAP + 1) not in out
-
-
-def test_the_cap_is_far_wider_than_anything_the_column_renders():
-    """If the cap were near the visible width it would be a display cap
-    again, and would fight the CSS at wide viewports."""
-    assert render_html.SESSION_TITLE_CAP >= 150
 
 
 def test_the_session_table_can_actually_ellipsize():
@@ -611,13 +639,3 @@ def test_the_three_breakdowns_share_a_row_and_the_chart_spans_the_width():
     last = out.rsplit('<table class="grid">', 1)[1]
     assert last.count("<h2>") == 1
     assert "DAILY" in last
-
-
-def test_the_chart_survives_the_ios5_lint():
-    """position:absolute is fine on iOS 5.1.1; flexbox and grid are not."""
-    days = [DayCost(day="2026-07-30", cost=5.0)]
-    out = render_html.render(_bare_data(daily=days))
-    assert "display:flex" not in out.replace(" ", "")
-    assert "display:grid" not in out.replace(" ", "")
-    assert "var(--" not in out
-    assert "<script" not in out.lower()

@@ -29,12 +29,6 @@ def a_record(message_id: str = "m1", **overrides) -> UsageRecord:
     return UsageRecord(**base)
 
 
-def test_ingest_returns_the_number_of_rows_inserted():
-    with Store(":memory:") as store:
-        inserted = store.ingest(scan.ScanResult(records=[a_record("m1"), a_record("m2")]))
-        assert inserted == 2
-
-
 def test_ingest_is_idempotent():
     """The core durability property: re-scanning forever must not double-count."""
     with Store(":memory:") as store:

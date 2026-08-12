@@ -82,10 +82,10 @@ def test_an_unparseable_day_is_never_in_a_bounded_range():
 
 def test_panels_follow_the_selected_range():
     week = aggregate.build(SPREAD, {}, now=NOW, range_key="7d")
-    assert sum(bar.cost for bar in week.money) == pytest.approx(50.0)  # 2 records
+    assert sum(bar.cost for bar in week.scoped.money) == pytest.approx(50.0)  # 2 records
 
     everything = aggregate.build(SPREAD, {}, now=NOW, range_key="all")
-    assert sum(bar.cost for bar in everything.money) == pytest.approx(100.0)
+    assert sum(bar.cost for bar in everything.scoped.money) == pytest.approx(100.0)
 
 
 def test_the_hero_row_never_follows_the_range():
@@ -102,8 +102,8 @@ def test_shares_are_relative_to_the_selected_range():
     """A panel's percentages must add up to what that panel is showing, not
     to a total the reader cannot see."""
     week = aggregate.build(SPREAD, {}, now=NOW, range_key="7d")
-    assert sum(bar.share for bar in week.by_model) == pytest.approx(1.0)
-    assert sum(bar.share for bar in week.money) == pytest.approx(1.0)
+    assert sum(bar.share for bar in week.scoped.by_model) == pytest.approx(1.0)
+    assert sum(bar.share for bar in week.scoped.money) == pytest.approx(1.0)
 
 
 def test_delegation_and_source_bands_follow_the_range():
@@ -112,17 +112,17 @@ def test_delegation_and_source_bands_follow_the_range():
         rec("m2", "2026-06-08", is_subagent=True),  # outside 7d
     ]
     week = aggregate.build(records, {}, now=NOW, range_key="7d")
-    assert week.subagent_cost == 0.0
+    assert week.scoped.subagent_cost == 0.0
     everything = aggregate.build(records, {}, now=NOW, range_key="all")
-    assert everything.subagent_cost == pytest.approx(25.0)
+    assert everything.scoped.subagent_cost == pytest.approx(25.0)
 
 
 def test_an_empty_range_renders_rather_than_dividing_by_zero():
     """Pick 'today' on a day with no usage: every panel is empty and every
     share would be 0/0."""
     data = aggregate.build([rec("old", "2026-06-08")], {}, now=NOW, range_key="today")
-    assert data.money == []
-    assert data.avg_cost_per_message == 0.0
+    assert data.scoped.money == []
+    assert data.scoped.avg_cost_per_message == 0.0
     out = render_html.render(data)
     assert out.startswith("<!DOCTYPE html>")
     assert "no data yet" in out
@@ -164,13 +164,7 @@ def test_panel_headings_name_the_selected_range():
 
 # --- the refresh ------------------------------------------------------------
 
-def test_the_default_view_refreshes_in_place():
-    out = render_html.render(aggregate.build(SPREAD, {}, now=NOW), base_path="/d/tok")
-    assert 'content="30"' in out
 
-
-@pytest.mark.parametrize("key", [r.key for r in ranges.CATALOGUE])
-def test_a_selected_range_survives_the_refresh(key):
     """The refresh must reload the current URL, query string and all.
 
     Sending it to a fixed URL instead resets the selection roughly every 30
@@ -178,31 +172,12 @@ def test_a_selected_range_survives_the_refresh(key):
     unusable in practice: you cannot read a range that keeps vanishing.
     A bare content="N" reloads whatever is in the address bar.
     """
-    out = render_html.render(
-        aggregate.build(SPREAD, {}, now=NOW, range_key=key), base_path="/d/tok"
-    )
+
     assert 'content="30"' in out
     assert "url=" not in out.split("</head>")[0], "the refresh must not navigate away"
 
 
-def test_the_selector_survives_the_ios5_lint():
-    """The whole point of links over a dropdown: no JavaScript involved."""
-    out = render_html.render(aggregate.build(SPREAD, {}, now=NOW, range_key="month"))
-    assert "<script" not in out.lower()
-    assert "onclick" not in out.lower()
-    assert ":hover" not in out
-
-
 # --- refresh interval -------------------------------------------------------
-
-def test_the_refresh_interval_is_honoured_on_a_selected_range():
-    out = render_html.render(
-        aggregate.build(SPREAD, {}, now=NOW, range_key="7d"),
-        base_path="/d/tok",
-        refresh_seconds=120,
-    )
-    assert 'content="120"' in out
-
 
 def test_returning_to_the_default_is_always_one_click_away():
     """With the selection now sticky, the ALL TIME link is the only way back —

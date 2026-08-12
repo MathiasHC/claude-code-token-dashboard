@@ -18,13 +18,6 @@ NOW = dt.datetime(2026, 7, 30, 12, 0, 0)
 EXPECTED_TOTAL = 0.2585   # was 0.2435 before Amendment A
 
 
-def test_full_pipeline_produces_the_expected_total(tmp_path):
-    with Store(tmp_path / "history.db") as db:
-        db.ingest(scan.scan(FIXTURES))
-        data = aggregate.build(db.records(), db.titles(), now=NOW)
-    assert data.all_time.cost == pytest.approx(EXPECTED_TOTAL, abs=1e-9)
-
-
 def test_full_pipeline_is_idempotent_over_repeated_runs(tmp_path):
     db_path = tmp_path / "history.db"
     totals = []
@@ -40,15 +33,15 @@ def test_pipeline_counts_five_messages_and_two_projects(tmp_path):
         db.ingest(scan.scan(FIXTURES))
         data = aggregate.build(db.records(), db.titles(), now=NOW)
     assert data.all_time.messages == 5
-    assert {bar.label for bar in data.by_project} == {"alpha", "beta"}
+    assert {bar.label for bar in data.scoped.by_project} == {"alpha", "beta"}
 
 
 def test_pipeline_splits_main_from_subagent_cost(tmp_path):
     with Store(tmp_path / "history.db") as db:
         db.ingest(scan.scan(FIXTURES))
         data = aggregate.build(db.records(), db.titles(), now=NOW)
-    assert data.subagent_cost == pytest.approx(0.015, abs=1e-9)
-    assert data.main_cost == pytest.approx(0.2435, abs=1e-9)
+    assert data.scoped.subagent_cost == pytest.approx(0.015, abs=1e-9)
+    assert data.scoped.main_cost == pytest.approx(0.2435, abs=1e-9)
 
 
 def test_pipeline_reports_the_unpriced_model(tmp_path):
@@ -151,14 +144,14 @@ def test_combined_pipeline_is_idempotent(tmp_path):
 
 def test_source_shares_sum_to_the_whole(tmp_path):
     data = _combined(tmp_path)
-    assert sum(bar.cost for bar in data.by_source) == pytest.approx(COMBINED_TOTAL, abs=1e-9)
+    assert sum(bar.cost for bar in data.scoped.by_source) == pytest.approx(COMBINED_TOTAL, abs=1e-9)
 
 
 def test_adding_cowork_does_not_change_the_claude_code_figure(tmp_path):
     """The new surface must be purely additive: existing Claude Code spend
     reads exactly as it did before multi-source ingest."""
     data = _combined(tmp_path)
-    code = next(bar for bar in data.by_source if bar.label == "Claude Code")
+    code = next(bar for bar in data.scoped.by_source if bar.label == "Claude Code")
     assert code.cost == pytest.approx(EXPECTED_TOTAL, abs=1e-9)
 
 

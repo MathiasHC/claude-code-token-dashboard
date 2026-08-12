@@ -5,19 +5,17 @@ from __future__ import annotations
 import datetime as dt
 import errno
 import os
-import secrets
 import socket
 import sys
-import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from . import aggregate, cowork, ingest, plans, qr, ranges, render_html, scan, store, tokens
+from . import freshness, plans, qr, ranges, render_html, scan, store, tokens
 
 DEFAULT_PORT = 8420
-DEFAULT_MIN_INGEST_INTERVAL = 10.0
+DEFAULT_MIN_INGEST_INTERVAL = freshness.DEFAULT_MIN_INGEST_INTERVAL
 DEFAULT_REFRESH_SECONDS = 30
 
 
@@ -59,14 +57,18 @@ def local_ip() -> str:
 
 
 class App:
-    """Owns the store and the last good render."""
+    """Turns a request for a range into a page.
+
+    Everything about *how current* the numbers are lives behind
+    freshness.Freshness. What is left here is presentation: which prefix the
+    range links point at, and how often the page reloads itself.
+    """
 
     def __init__(
         self,
         db_path: str | Path,
         projects_dir: Path,
         *,
-        token: str,
         cowork_dir: Path | None = None,
         base_path: str = "",
         plan: plans.Plan | None = None,
@@ -74,136 +76,43 @@ class App:
         min_ingest_interval: float = DEFAULT_MIN_INGEST_INTERVAL,
         clock=time.monotonic,
         now=dt.datetime.now,
+        scan=None,
     ) -> None:
-        self.db_path = db_path
-        self.projects_dir = Path(projects_dir)
-        self.cowork_dir = Path(cowork_dir) if cowork_dir is not None else cowork.default_cowork_dir()
-        # Never resolved here: resolve() can prompt, and App is constructed
-        # inside a request path in tests. The CLI settles the plan up front.
-        self.plan = plan or plans.DEFAULT
+        self.freshness = freshness.Freshness(
+            db_path,
+            projects_dir,
+            cowork_dir=cowork_dir,
+            plan=plan,
+            min_interval=min_ingest_interval,
+            clock=clock,
+            now=now,
+            scan=scan,
+        )
         # Prefix the range links point at, e.g. /d/<token>. Empty in tests,
         # where relative links are fine.
         self.base_path = base_path
         # How often the page reloads itself, in place — a selected range is
         # carried across reloads rather than reset.
         self.refresh_seconds = refresh_seconds
-        self.token = token
-        self.min_ingest_interval = min_ingest_interval
-        self._clock = clock
-        self._now = now
-        self._last_ingest_at: float | None = None
-        # One rendered page per range. Cleared whenever an ingest lands,
-        # because every range's numbers move when new rows arrive.
-        self._pages: dict[str, str] = {}
-        self._last_success_at: dt.datetime | None = None
-        self.ingest_count = 0
-        # Guards the check-then-act in page(): _due() and the ingest that
-        # follows it must be atomic, or concurrent requests (the server is
-        # threaded) can all observe "due" before any of them stamps
-        # _last_ingest_at, and each triggers its own full scan. Holding the
-        # lock for the whole method — not just the check — means threads
-        # that lose the race simply wait for the one scan already in
-        # flight and then fall into the "not due" branch, returning the
-        # page it just rendered.
-        self._lock = threading.Lock()
 
-    def _scan(self, projects_dir: Path, skip):
-        return ingest.scan_sources(
-            ingest.default_sources(projects_dir, self.cowork_dir), skip
-        )
+    @property
+    def plan(self) -> plans.Plan:
+        return self.freshness.plan
 
-    def _due(self) -> bool:
-        if self._last_ingest_at is None:
-            return True
-        return (self._clock() - self._last_ingest_at) >= self.min_ingest_interval
+    @property
+    def ingest_count(self) -> int:
+        return self.freshness.ingest_count
 
-    def _render(self, records, titles, selected, warning=None) -> str:
-        data = aggregate.build(
-            records,
-            titles,
-            now=self._now(),
-            max_plan_monthly_usd=self.plan.monthly_usd,
-            plan_label=self.plan.label,
-            range_key=selected.key,
-        )
+    def page(self, range_key: str | None = None) -> str:
+        # An unknown or malformed range falls back to the default rather than
+        # erroring: it is a stale bookmark, not an attack.
+        current = self.freshness.view(ranges.resolve(range_key))
         return render_html.render(
-            data,
-            warning=warning,
+            current.data,
+            warning=current.warning,
             base_path=self.base_path,
             refresh_seconds=self.refresh_seconds,
         )
-
-    def page(self, range_key: str | None = None) -> str:
-        # Whole method under the lock: the _due() check and the ingest it
-        # gates must be atomic across threads. See the note on self._lock.
-        selected = ranges.resolve(range_key)
-        with self._lock:
-            if self._due():
-                try:
-                    with store.Store(self.db_path) as db:
-                        result = self._scan(self.projects_dir, db.file_stats())
-                        db.ingest(result)
-                        records, titles = db.records(), db.titles()
-                    self.ingest_count += 1
-                    self._last_ingest_at = self._clock()
-                    self._last_success_at = self._now()
-                    # Every cached range is stale the moment new rows land.
-                    self._pages.clear()
-                    rendered = self._render(records, titles, selected)
-                    self._pages[selected.key] = rendered
-                    return rendered
-                except Exception as error:  # noqa: BLE001 - a wall display must not 500
-                    self._last_ingest_at = self._clock()
-                    # Only this range's own cached page. Falling back to
-                    # whatever else happens to be cached served a different
-                    # window's numbers under a banner that only claimed the
-                    # data was stale.
-                    stale = self._pages.get(selected.key)
-                    warning = f"refresh failed: {error}"
-                    if stale is not None:
-                        # The age clause is only true when there is in fact
-                        # older data on screen. Attached to an empty page it
-                        # claims figures the reader cannot see.
-                        if self._last_success_at is not None:
-                            age = int((self._now() - self._last_success_at).total_seconds())
-                            warning += f" — showing data from {age}s ago"
-                        return _inject_warning(stale, warning)
-                    warning += " — no data to show for this range"
-                    return self._render([], {}, selected, warning=warning)
-
-            cached = self._pages.get(selected.key)
-            if cached is not None:
-                return cached
-
-            # Throttled with nothing cached. If no ingest has *ever* worked,
-            # say so — an empty page and a broken scanner look identical
-            # otherwise, and silently showing zeroes is the worse failure.
-            never_succeeded = self._last_success_at is None
-            warning = "no successful refresh yet" if never_succeeded else None
-
-            # Otherwise this is just a range the user switched to between
-            # scans. Read the store rather than making them wait out the
-            # throttle; do not re-scan.
-            try:
-                with store.Store(self.db_path) as db:
-                    rendered = self._render(db.records(), db.titles(), selected, warning=warning)
-                if not never_succeeded:
-                    self._pages[selected.key] = rendered
-                return rendered
-            except Exception as error:  # noqa: BLE001 - a wall display must not 500
-                return self._render([], {}, selected, warning=f"could not read history: {error}")
-
-
-def _inject_warning(page: str, warning: str) -> str:
-    from html import escape
-
-    banner = f'<div class="warn">{escape(warning)}</div>'
-    marker = '<div class="titlebar">'
-    index = page.find("</div>", page.find(marker))
-    if index == -1:
-        return page
-    cut = index + len("</div>")
-    return page[:cut] + banner + page[cut:]
 
 
 def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
@@ -234,9 +143,7 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             if prefix != "/d" or not tokens.matches(token, candidate):
                 self.send_not_found()
                 return
-            # An unknown or malformed range falls back to the default rather
-            # than erroring: it is a stale bookmark, not an attack.
-            requested = parse_qs(query).get("range", [None])[0]
+            requested = parse_qs(query).get(ranges.QUERY_KEY, [None])[0]
             body = app.page(requested).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -269,7 +176,7 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def port_80_holder(host: str = "127.0.0.1", timeout: float = 0.4) -> str | None:
+def port_80_holder(host: str = "127.0.0.1", timeout: float = 0.4, port: int = 80) -> str | None:
     """Whatever is listening on port 80, or None.
 
     Not idle curiosity. If the URL loses its ":8420" — retyped on a phone,
@@ -277,11 +184,17 @@ def port_80_holder(host: str = "127.0.0.1", timeout: float = 0.4) -> str | None:
     request goes to port 80 instead. When something else answers there the
     user sees ITS 404, which looks identical to the token being wrong and
     sends them debugging the wrong thing entirely.
+
+    `port` is a parameter only so the header parsing below can be exercised
+    against a server a test is allowed to start. Binding 80 needs root, so
+    with the port hard-coded the only test that could exist was one that
+    stood up its own server and then asserted against the standard library
+    instead of against this function.
     """
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.settimeout(timeout)
     try:
-        if probe.connect_ex((host, 80)) != 0:
+        if probe.connect_ex((host, port)) != 0:
             return None
         probe.sendall(b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n")
         reply = probe.recv(512).decode("latin-1", "replace")
@@ -340,7 +253,6 @@ def serve(
     app = App(
         db_path=store.default_db_path(),
         projects_dir=scan.default_projects_dir(),
-        token=token,
         plan=plan,
         base_path=f"/d/{token}",
         refresh_seconds=refresh_seconds,

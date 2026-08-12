@@ -28,14 +28,10 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import NamedTuple
 
-
-class Plan(NamedTuple):
-    key: str
-    label: str
-    monthly_usd: float
-
+# Re-exported: `plans.Plan` is how every caller names it, but the type itself
+# belongs with the other shared types rather than with config loading.
+from .models import Plan
 
 #: Monthly-billing prices, current as of August 2026. Annual billing is
 #: cheaper (Pro is $17/mo on annual), and Team seats and Enterprise vary —

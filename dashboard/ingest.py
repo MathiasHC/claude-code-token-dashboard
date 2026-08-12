@@ -35,6 +35,13 @@ def default_sources(
     projects_dir: Path | None = None,
     cowork_dir: Path | None = None,
 ) -> list[Source]:
+    """Where each surface keeps its transcripts.
+
+    Adding a surface also means a display name in aggregate.SOURCE_LABELS, and
+    for anything shaped like Cowork a glob in cowork.TRANSCRIPT_PATTERN and a
+    root override beside it. That split is deliberate — see
+    docs/adr/0001-source-table-split.md.
+    """
     return [
         Source(
             name="code",
@@ -64,9 +71,15 @@ def scan_sources(
     """Scan every source and merge the results into one.
 
     Records are deduplicated by message_id across sources as well as within
-    them. On live data the two roots share no message IDs at all, but a
-    surface that ever mirrored another's transcripts must not double-count,
-    and the cost of the guard is one set lookup per record.
+    them, first source listed wins. On live data the two roots share no
+    message IDs at all, and the store would catch a collision anyway —
+    message_id is its primary key and the insert is INSERT OR IGNORE — so
+    this guard is not what protects the totals.
+
+    It is kept because "merge these scans" ought to return something merged.
+    Dropping it measured at 3% of a warm refresh (4.7ms of 156ms on a 30k
+    record history), which does not buy back handing callers a result that
+    can contain the same message twice.
     """
     skip = skip or {}
     records = []

@@ -23,7 +23,6 @@ def make_app(tmp_path, **overrides):
     kwargs = dict(
         db_path=tmp_path / "history.db",
         projects_dir=FIXTURES,
-        token="tok123",
         # Explicit, and deliberately absent by default: App falls back to the
         # real ~/Library/.../local-agent-mode-sessions, so an unset cowork_dir
         # would make every web test read whatever Cowork history happens to be
@@ -48,92 +47,44 @@ def test_token_file_is_not_world_readable(tmp_path):
     assert mode == 0o600
 
 
-def test_fallback_branch_does_not_expose_token_during_write(tmp_path):
-    """Verify that re-writing an empty pre-existing token file does not
-    temporarily expose the token at a permissive mode.
+def test_rewriting_an_empty_token_file_chmods_before_writing(tmp_path, monkeypatch):
+    """The fallback branch truncates a pre-existing empty token file. Without
+    os.fchmod on the descriptor, a file created at 0o644 by an older build
+    stays world-readable while the token is written into it.
 
-    This tests the fallback branch in load_or_create_token that truncates
-    an existing empty file. Without os.fchmod on the descriptor, a file that
-    was created at 0o644 by an older build would still be world-readable
-    when the token is written to it, until the final chmod catches up.
-
-    We create an empty 0o644 file, then call load_or_create_token on a
-    background thread while an observer thread polls the file continuously,
-    recording (mode, has_content) pairs. The assertion is that we never
-    observe non-empty content at a mode other than 0o600.
+    Asserts the descriptor is narrowed *before* any content reaches it. The
+    previous version of this test raced two threads and polled the file every
+    10us hoping to catch the exposure — but its instrumentation hung off
+    os.fchmod, so it only ran when the line under test was present. Deleting
+    that line stopped the observer widening any window at all, which is
+    exactly the regression it was written to catch.
     """
     token_path = tmp_path / "token"
-
-    # Create an empty token file at permissive mode to trigger the fallback branch
     token_path.touch()
     os.chmod(token_path, 0o644)
 
-    observations = []
-    stop_observing = threading.Event()
-    sync_event = threading.Event()
+    events: list[tuple[str, int]] = []
+    real_fchmod = os.fchmod
+    real_write = os.write
 
-    def observer():
-        """Poll the token file, recording (mode, has_content) pairs."""
-        while not stop_observing.is_set():
-            try:
-                st = os.stat(token_path)
-                mode = st.st_mode & 0o777
-                try:
-                    content = token_path.read_text(encoding="utf-8").strip()
-                except:
-                    content = ""
-                has_content = bool(content)
-                observations.append((mode, has_content))
-            except (FileNotFoundError, OSError):
-                pass
-            time.sleep(0.00001)  # Poll very frequently (every 10 microseconds)
+    def spy_fchmod(fd, mode):
+        events.append(("fchmod", mode))
+        return real_fchmod(fd, mode)
 
-    def writer():
-        """Run load_or_create_token with the post-fchmod window widened.
+    def spy_write(fd, payload):
+        events.append(("write", len(payload)))
+        return real_write(fd, payload)
 
-        The window has to be stretched from somewhere for the observer to
-        have a chance of catching an exposed token. Patching os.fchmod is the
-        honest seam: shipping a no-op function in the production token path
-        purely so a test can reach into it is scaffolding in a security-
-        sensitive code path, which is worse than a slightly awkward test.
-        """
-        real_fchmod = os.fchmod
+    monkeypatch.setattr(os, "fchmod", spy_fchmod)
+    monkeypatch.setattr(os, "write", spy_write)
+    web.load_or_create_token(tmp_path)
 
-        def slow_fchmod(fd, mode):
-            real_fchmod(fd, mode)
-            sync_event.set()
-            time.sleep(0.001)
-
-        os.fchmod = slow_fchmod
-        try:
-            web.load_or_create_token(tmp_path)
-        finally:
-            os.fchmod = real_fchmod
-
-    observer_thread = threading.Thread(target=observer, daemon=True)
-    observer_thread.start()
-
-    writer_thread = threading.Thread(target=writer)
-    writer_thread.start()
-    writer_thread.join(timeout=5)
-
-    stop_observing.set()
-    observer_thread.join(timeout=1)
-
-    # Verify the final state
-    final_mode = (token_path.stat().st_mode & 0o777)
-    final_content = token_path.read_text(encoding="utf-8").strip()
-    assert final_mode == 0o600, f"Final mode is {oct(final_mode)}, expected 0o600"
-    assert len(final_content) >= 16, "Final token is empty or too short"
-
-    # Verify no observation recorded non-empty content at a non-0o600 mode.
-    # This is the critical safety check: the token was never exposed.
-    for mode, has_content in observations:
-        if has_content and mode != 0o600:
-            pytest.fail(
-                f"Observed non-empty token content at mode {oct(mode)}, "
-                f"expected mode 0o600. This is a permission race condition."
-            )
+    assert ("fchmod", 0o600) in events, "descriptor was never narrowed to 0o600"
+    narrowed = events.index(("fchmod", 0o600))
+    wrote = next((i for i, (kind, _) in enumerate(events) if kind == "write"), None)
+    if wrote is not None:
+        assert narrowed < wrote, "token bytes were written before the chmod"
+    assert (token_path.stat().st_mode & 0o777) == 0o600
 
 
 def test_page_renders_html_from_the_fixture_tree(tmp_path):
@@ -163,13 +114,13 @@ def test_concurrent_requests_trigger_only_one_ingest(tmp_path):
     The delay widens the race window so this fails deterministically
     without the lock rather than passing by luck."""
     app = make_app(tmp_path)
-    real_scan = app._scan
+    real_scan = app.freshness.scan
 
     def slow_scan(*args, **kwargs):
         time.sleep(0.2)
         return real_scan(*args, **kwargs)
 
-    app._scan = slow_scan  # type: ignore[method-assign]
+    app.freshness.scan = slow_scan  # type: ignore[method-assign]
 
     threads = [threading.Thread(target=app.page) for _ in range(12)]
     for t in threads:
@@ -189,7 +140,7 @@ def test_throttled_call_before_any_success_still_renders(tmp_path):
     def explode(*_args, **_kwargs):
         raise OSError("disk gone")
 
-    app._scan = explode  # type: ignore[method-assign]
+    app.freshness.scan = explode  # type: ignore[method-assign]
     app.page()
     second = app.page()
     assert second.startswith("<!DOCTYPE html>")
@@ -204,8 +155,8 @@ def test_page_serves_last_good_render_with_a_warning_when_ingest_fails(tmp_path)
     def explode(*_args, **_kwargs):
         raise OSError("disk gone")
 
-    app._scan = explode  # type: ignore[method-assign]
-    app._last_ingest_at = None  # force a re-ingest attempt
+    app.freshness.scan = explode  # type: ignore[method-assign]
+    app.freshness._last_ingest_at = None  # force a re-ingest attempt
     degraded = app.page()
     assert 'class="warn"' in degraded
     assert "CLAUDE TOKENS" in degraded
@@ -217,7 +168,7 @@ def test_first_ingest_failure_still_renders_a_page(tmp_path):
     def explode(*_args, **_kwargs):
         raise OSError("disk gone")
 
-    app._scan = explode  # type: ignore[method-assign]
+    app.freshness.scan = explode  # type: ignore[method-assign]
     page = app.page()
     assert page.startswith("<!DOCTYPE html>")
     assert 'class="warn"' in page
@@ -397,23 +348,30 @@ def test_switching_range_does_not_wait_out_the_ingest_throttle(tmp_path):
 
 
 def test_each_range_is_cached_separately(tmp_path):
+    """What the cache holds is the built DashboardData, one per range. The
+    HTML is rebuilt each request — measured at 0.06ms against a 79ms build on
+    30k records, so re-rendering costs nothing and keeps the degraded path
+    able to re-render with a warning instead of patching markup."""
     app = make_app(tmp_path, min_ingest_interval=10_000.0)
     first = app.page("7d")
-    assert app.page("7d") is first, "the same range should serve from cache"
-    assert app.page("30d") is not first
+    assert app.page("7d") == first, "the same range should serve from cache"
+    assert app.freshness._views["7d"] is app.freshness._views["7d"]
+    assert app.page("30d") != first
+    assert set(app.freshness._views) == {"7d", "30d"}
 
 
 def test_an_ingest_invalidates_every_cached_range(tmp_path):
     """Stale ranges are worse than slow ones: after new rows land, a cached
-    page for another range would show figures that no longer add up."""
+    view for another range would show figures that no longer add up."""
     ticks = iter([0.0, 1.0, 2.0, 100.0, 101.0, 102.0, 103.0])
     app = make_app(tmp_path, clock=lambda: next(ticks), min_ingest_interval=10.0)
     app.page("7d")
-    cached = app.page("7d")
+    app.page("7d")  # inside the throttle: consumes a tick, does not re-ingest
+    cached = app.freshness._views["7d"]
     app.page("30d")
     app.page("7d")  # clock jumps past the throttle -> re-ingest, cache cleared
     assert app.ingest_count == 2
-    assert app.page("7d") is not cached
+    assert app.freshness._views["7d"] is not cached
 
 
 def test_the_token_is_still_required_when_a_range_is_supplied(server):
@@ -447,18 +405,26 @@ def test_the_refresh_interval_reaches_the_page(tmp_path):
 
 def test_a_failed_refresh_never_serves_another_range(tmp_path):
     """The spec's required regression test. The fallback used to reach for
-    next(iter(self._pages.values())), so a request for TODAY could be served
-    the ALL TIME page under a banner that only said the data was stale —
-    wrong window, no indication."""
+    next(iter(cache.values())), so a request for TODAY could be served the
+    ALL TIME view under a banner that only said the data was stale — wrong
+    window, no indication.
+
+    Asserts that the *panels* carry TODAY, not merely that "LAST 30 DAYS" is
+    absent. The earlier version checked only the absence, and the string it
+    checked came from the DAILY heading, which was derived from the number of
+    days carrying spend rather than from the range at all — so it could pass
+    or fail for reasons unconnected to which window was served.
+    """
     app = make_app(tmp_path, min_ingest_interval=0.0)
     app.page("30d")
-    assert "LAST 30 DAYS" in app._pages["30d"]
+    assert app.freshness._views["30d"].scoped.key == "30d"
 
     def explode(*_args, **_kwargs):
         raise OSError("disk gone")
 
-    app._scan = explode  # type: ignore[method-assign]
+    app.freshness.scan = explode  # type: ignore[method-assign]
     out = app.page("today")
+    assert "WHERE THE MONEY GOES &middot; TODAY" in out
     assert "LAST 30 DAYS" not in out, "served a different range's page"
     assert 'class="warn"' in out
 
@@ -472,7 +438,7 @@ def test_the_banner_does_not_claim_data_it_is_not_showing(tmp_path):
     def explode(*_args, **_kwargs):
         raise OSError("disk gone")
 
-    app._scan = explode  # type: ignore[method-assign]
+    app.freshness.scan = explode  # type: ignore[method-assign]
     empty = app.page("today")
     assert "showing data from" not in empty
     assert "no data to show for this range" in empty
@@ -530,8 +496,14 @@ def test_port_80_probe_reports_nothing_when_nothing_listens():
 
 
 def test_port_80_probe_names_what_it_found():
-    """Started on a port we control, the probe should report its Server
-    header so the warning can name the culprit."""
+    """The probe reports the Server header so the startup warning can name the
+    culprit.
+
+    This used to stand up a server and then assert that http.client saw the
+    Server header it had just set — it never called port_80_holder at all, and
+    stayed green with the whole function deleted. It now points the probe at
+    the fake server, which is what the `port` argument is for.
+    """
     class Quiet(http.server.BaseHTTPRequestHandler):
         server_version = "PretendServer/9.9"
         sys_version = ""
@@ -548,14 +520,12 @@ def test_port_80_probe_names_what_it_found():
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
     try:
-        # The probe hard-codes port 80; exercise its parsing directly.
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        conn.request("HEAD", "/")
-        assert "PretendServer" in (conn.getresponse().getheader("Server") or "")
-        conn.close()
+        found = web.port_80_holder(host="127.0.0.1", timeout=2.0, port=port)
     finally:
         httpd.shutdown()
         httpd.server_close()
+    assert found is not None
+    assert "PretendServer" in found
 
 
 def test_the_server_accepts_a_mistyped_case(server):

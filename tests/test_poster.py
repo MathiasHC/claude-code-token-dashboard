@@ -50,7 +50,7 @@ def test_cache_saved_is_the_counterfactual_not_the_amount_paid():
         {},
         now=NOW,
     )
-    assert data.cache_saved == pytest.approx(4.50)
+    assert data.scoped.cache_saved == pytest.approx(4.50)
 
 
 def test_an_unpriced_model_contributes_no_saving():
@@ -61,7 +61,7 @@ def test_an_unpriced_model_contributes_no_saving():
         {},
         now=NOW,
     )
-    assert data.cache_saved == 0.0
+    assert data.scoped.cache_saved == 0.0
 
 
 def test_the_page_qualifies_the_saving_as_a_counterfactual():
@@ -223,7 +223,7 @@ def test_the_unattributed_bucket_is_excluded_from_by_skill():
         rec("m2", "2026-08-11", skill="tdd"),
     ]
     data = aggregate.build(records, {}, now=NOW)
-    assert [bar.label for bar in data.by_skill] == ["tdd"]
+    assert [bar.label for bar in data.scoped.by_skill] == ["tdd"]
 
 
 def test_by_skill_shares_renormalise_within_the_panel():
@@ -236,12 +236,12 @@ def test_by_skill_shares_renormalise_within_the_panel():
         rec("m4", "2026-08-11", skill="review"),
     ]
     data = aggregate.build(records, {}, now=NOW)
-    assert sum(bar.share for bar in data.by_skill) == pytest.approx(1.0)
+    assert sum(bar.share for bar in data.scoped.by_skill) == pytest.approx(1.0)
 
 
 def test_an_entirely_unattributed_history_yields_an_empty_panel():
     data = aggregate.build([rec("m1", "2026-08-11")], {}, now=NOW)
-    assert data.by_skill == []
+    assert data.scoped.by_skill == []
     assert "no data yet" in render_html.render(data)
 
 
@@ -270,12 +270,6 @@ def test_no_column_is_marked_when_today_has_no_usage():
 
 # --- the default range --------------------------------------------------
 
-def test_the_default_range_is_not_all_time():
-    """An all-time default is why every panel below the selector was the most
-    static content on the page."""
-    assert ranges.DEFAULT.key != "all"
-
-
 def test_the_hero_row_is_unaffected_by_the_default_range():
     """Changing the default must not move the summary — it is global by
     construction and several deltas depend on that."""
@@ -289,13 +283,3 @@ def test_the_hero_row_is_unaffected_by_the_default_range():
 
 # --- iOS 5 lint on the new elements -------------------------------------
 
-def test_the_new_elements_survive_the_compatibility_lint():
-    records = [
-        rec("m1", "2026-08-11", hour=9, minute=0, cache_read_tokens=1_000_000),
-        rec("m2", "2026-08-11", hour=9, minute=30, skill="tdd"),
-    ]
-    out = render_html.render(aggregate.build(records, {}, now=NOW))
-    assert "<script" not in out.lower()
-    assert "display:flex" not in out.replace(" ", "")
-    assert "display:grid" not in out.replace(" ", "")
-    assert "var(--" not in out

@@ -42,9 +42,9 @@ layout before you have any history of your own.*
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
 - **A daily chart** — the last 30 active days across the full width, with
-  today picked out and a value axis that snaps to round money: a $86 peak
-  draws lines at $50 and $100, so the bars are readable as amounts rather
-  than only as relative heights.
+  today picked out and a value axis that snaps to round money: the $151 peak
+  above draws lines at $80 and $160, so the bars are readable as amounts
+  rather than only as relative heights.
 
 ## Requirements
 

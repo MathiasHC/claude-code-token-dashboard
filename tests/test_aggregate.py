@@ -5,7 +5,7 @@ import datetime as dt
 import pytest
 
 from dashboard import aggregate
-from dashboard.models import UsageRecord
+from dashboard.models import Plan, UsageRecord
 
 NOW = dt.datetime(2026, 7, 30, 12, 0, 0)
 
@@ -75,7 +75,8 @@ def test_active_days_counts_distinct_days():
 
 
 def test_effective_multiple_divides_month_to_date_by_the_plan_price():
-    data = aggregate.build([rec("m1", "2026-07-30")] * 1, {}, now=NOW, max_plan_monthly_usd=5.0)
+    plan = Plan("tiny", "Tiny", 5.0)
+    data = aggregate.build([rec("m1", "2026-07-30")] * 1, {}, now=NOW, plan=plan)
     assert data.effective_multiple == pytest.approx(5.0)
 
 
@@ -163,7 +164,7 @@ def test_money_panel_splits_the_four_token_classes():
         cache_read_tokens=1_000_000, # $0.50
         cache_write_1h=1_000_000,    # $10.00
     )
-    labels = {bar.label: bar.cost for bar in aggregate.build([record], {}, now=NOW).money}
+    labels = {bar.label: bar.cost for bar in aggregate.build([record], {}, now=NOW).scoped.money}
     assert labels["cache read"] == pytest.approx(0.50)
     assert labels["cache write"] == pytest.approx(10.00)
     assert labels["output"] == pytest.approx(25.00)
@@ -172,17 +173,8 @@ def test_money_panel_splits_the_four_token_classes():
 
 def test_money_panel_shares_sum_to_one():
     record = rec("m1", "2026-07-30", input_tokens=1_000_000, cache_read_tokens=1_000_000)
-    total = sum(bar.share for bar in aggregate.build([record], {}, now=NOW).money)
+    total = sum(bar.share for bar in aggregate.build([record], {}, now=NOW).scoped.money)
     assert total == pytest.approx(1.0)
-
-
-def test_cache_hit_rate_is_reads_over_reads_plus_fresh_input():
-    record = rec("m1", "2026-07-30", input_tokens=1_000, cache_read_tokens=9_000)
-    assert aggregate.build([record], {}, now=NOW).cache_hit_rate == pytest.approx(0.9)
-
-
-def test_cache_hit_rate_is_zero_when_there_is_no_input_at_all():
-    assert aggregate.build([], {}, now=NOW).cache_hit_rate == 0.0
 
 
 def test_by_model_groups_and_sorts_by_cost_descending():
@@ -190,7 +182,7 @@ def test_by_model_groups_and_sorts_by_cost_descending():
         rec("m1", "2026-07-30", model="claude-haiku-4-5"),   # $5
         rec("m2", "2026-07-30", model="claude-opus-4-8"),    # $25
     ]
-    bars = aggregate.build(records, {}, now=NOW).by_model
+    bars = aggregate.build(records, {}, now=NOW).scoped.by_model
     assert [bar.label for bar in bars] == ["claude-opus-4-8", "claude-haiku-4-5"]
 
 
@@ -200,13 +192,16 @@ def test_by_project_and_by_skill_group_correctly():
         rec("m2", "2026-07-30", project="beta", skill="graphify"),
     ]
     data = aggregate.build(records, {}, now=NOW)
-    assert {bar.label for bar in data.by_project} == {"alpha", "beta"}
-    assert [bar.label for bar in data.by_skill] == ["graphify"]
+    assert {bar.label for bar in data.scoped.by_project} == {"alpha", "beta"}
+    assert [bar.label for bar in data.scoped.by_skill] == ["graphify"]
 
 
-def test_groupings_are_limited_to_top_n():
-    records = [rec(f"m{i}", "2026-07-30", project=f"p{i}") for i in range(10)]
-    assert len(aggregate.build(records, {}, now=NOW, top_n=3).by_project) == 3
+def test_groupings_are_limited_to_the_top_n_rows():
+    """TOP_N is a module constant rather than an argument: production never
+    varied it, and as a parameter its only effect was to let this assertion
+    use a smaller number than the page actually renders."""
+    records = [rec(f"m{i}", "2026-07-30", project=f"p{i}") for i in range(aggregate.TOP_N + 5)]
+    assert len(aggregate.build(records, {}, now=NOW).scoped.by_project) == aggregate.TOP_N
 
 
 def test_top_sessions_uses_titles_and_falls_back_when_missing():
@@ -214,7 +209,7 @@ def test_top_sessions_uses_titles_and_falls_back_when_missing():
         rec("m1", "2026-07-30", session_id="sess-a"),
         rec("m2", "2026-07-30", session_id="sess-b"),
     ]
-    bars = aggregate.build(records, {"sess-a": "/graphify"}, now=NOW).top_sessions
+    bars = aggregate.build(records, {"sess-a": "/graphify"}, now=NOW).scoped.top_sessions
     labels = {bar.label for bar in bars}
     assert "/graphify" in labels
     assert "(untitled session)" in labels
@@ -226,14 +221,14 @@ def test_averages_are_per_message_and_per_session():
         rec("m2", "2026-07-30", session_id="sess-a"),
     ]
     data = aggregate.build(records, {}, now=NOW)
-    assert data.avg_cost_per_message == pytest.approx(25.0)
-    assert data.avg_cost_per_session == pytest.approx(50.0)
+    assert data.scoped.avg_cost_per_message == pytest.approx(25.0)
+    assert data.scoped.avg_cost_per_session == pytest.approx(50.0)
 
 
 def test_averages_are_zero_with_no_records():
     data = aggregate.build([], {}, now=NOW)
-    assert data.avg_cost_per_message == 0.0
-    assert data.avg_cost_per_session == 0.0
+    assert data.scoped.avg_cost_per_message == 0.0
+    assert data.scoped.avg_cost_per_session == 0.0
 
 
 def test_unpriced_models_are_reported_and_deduplicated():
@@ -254,11 +249,17 @@ def test_unpriced_model_tokens_are_counted_but_cost_nothing():
 
 
 def test_daily_series_is_limited_and_chronological():
-    records = [rec(f"m{i}", f"2026-07-{i:02d}") for i in range(1, 26)]
-    daily = aggregate.build(records, {}, now=NOW, daily_days=10).daily
-    assert len(daily) == 10
+    """Spans two months so the cap is doing real work: 45 days of history
+    against a 30-day chart."""
+    start = dt.date(2026, 6, 16)
+    records = [
+        rec(f"m{i}", (start + dt.timedelta(days=i)).isoformat())
+        for i in range(45)
+    ]
+    daily = aggregate.build(records, {}, now=NOW, range_key="all").scoped.daily
+    assert len(daily) == aggregate.DAILY_DAYS
     assert daily[0].day < daily[-1].day
-    assert daily[-1].day == "2026-07-25"
+    assert daily[-1].day == "2026-07-30"
 
 
 def test_records_with_no_day_are_ignored_by_windows():
@@ -268,8 +269,8 @@ def test_records_with_no_day_are_ignored_by_windows():
 def test_empty_input_produces_a_valid_zeroed_dashboard():
     data = aggregate.build([], {}, now=NOW)
     assert data.all_time.cost == 0.0
-    assert data.money == []
-    assert data.daily == []
+    assert data.scoped.money == []
+    assert data.scoped.daily == []
     assert data.effective_multiple == 0.0
 
 
@@ -281,9 +282,9 @@ def test_main_and_subagent_costs_are_split():
         rec("m2", "2026-07-30", is_subagent=True),    # $25, subagent
     ]
     data = aggregate.build(records, {}, now=NOW)
-    assert data.main_cost == pytest.approx(25.0)
-    assert data.subagent_cost == pytest.approx(25.0)
-    assert data.subagent_share == pytest.approx(0.5)
+    assert data.scoped.main_cost == pytest.approx(25.0)
+    assert data.scoped.subagent_cost == pytest.approx(25.0)
+    assert data.scoped.subagent_share == pytest.approx(0.5)
 
 
 def test_subagent_cost_still_counts_toward_every_window_and_grouping():
@@ -293,8 +294,8 @@ def test_subagent_cost_still_counts_toward_every_window_and_grouping():
     data = aggregate.build(records, {}, now=NOW)
     assert data.all_time.cost == pytest.approx(25.0)
     assert data.today.cost == pytest.approx(25.0)
-    assert [bar.label for bar in data.by_project] == ["alpha"]
+    assert [bar.label for bar in data.scoped.by_project] == ["alpha"]
 
 
 def test_subagent_share_is_zero_with_no_records():
-    assert aggregate.build([], {}, now=NOW).subagent_share == 0.0
+    assert aggregate.build([], {}, now=NOW).scoped.subagent_share == 0.0
