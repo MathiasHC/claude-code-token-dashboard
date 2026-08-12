@@ -232,8 +232,6 @@ def test_max_band_states_the_month_change_as_a_same_point_comparison():
 
 def test_session_titles_are_html_escaped():
     """Titles are arbitrary user text and routinely contain < and &."""
-    # Kept under SESSION_TITLE_MAX so truncation cannot remove the very
-    # characters this test exists to check.
     data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "<b>a & b</b>"}, now=NOW)
     out = render_html.render(data)
     assert "<b>a & b</b>" not in out
@@ -523,13 +521,50 @@ def test_plan_label_is_html_escaped():
     assert "&lt;script&gt;" in out
 
 
-def test_session_titles_are_truncated_for_the_narrower_column():
-    """Half the width now, so the cap came down with it."""
-    long_title = "x" * 200
-    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": long_title}, now=NOW)
+def test_titles_reach_the_markup_untouched_up_to_the_payload_cap():
+    """Display truncation is the browser's job, so nothing is cut at a width
+    the server cannot know."""
+    title = "x" * render_html.SESSION_TITLE_CAP
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": title}, now=NOW)
     out = render_html.render(data)
-    assert "x" * (render_html.SESSION_TITLE_MAX + 1) not in out
-    assert "…" in out
+    assert title in out
+    assert "…" not in out, "the ellipsis is CSS, not a character in the text"
+
+
+def test_a_very_long_title_is_capped_before_it_reaches_the_page():
+    """Real titles are whole prompts — measured between 265 and 4,646
+    characters on live data. Without a cap that is several KB per refresh of
+    text nobody sees, and it puts the entire prompt in the page source when
+    the column shows about thirty characters of it."""
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "y" * 5000}, now=NOW)
+    out = render_html.render(data)
+    assert "y" * render_html.SESSION_TITLE_CAP in out
+    assert "y" * (render_html.SESSION_TITLE_CAP + 1) not in out
+
+
+def test_the_cap_is_far_wider_than_anything_the_column_renders():
+    """If the cap were near the visible width it would be a display cap
+    again, and would fight the CSS at wide viewports."""
+    assert render_html.SESSION_TITLE_CAP >= 150
+
+
+def test_the_session_table_can_actually_ellipsize():
+    """text-overflow does nothing in an auto-layout table: the cell simply
+    grows to fit. The three properties have to arrive together, and on a
+    table whose column widths are fixed."""
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "a title"}, now=NOW)
+    out = render_html.render(data)
+    assert 'table.srows { width:100%; table-layout:fixed;' in out
+    assert "text-overflow:ellipsis" in out
+    assert "white-space:nowrap" in out
+    assert 'class="srows"' in out
+
+
+def test_sessions_read_title_then_amount_like_every_other_panel():
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "the title"}, now=NOW)
+    out = render_html.render(data)
+    row = re.search(r"<tr><td class=\"stitle\">.*?</tr>", out, re.S).group(0)
+    assert row.index("stitle") < row.index("amt"), "amount came before the title"
 
 
 # --- the daily chart's value axis ---------------------------------------
