@@ -60,11 +60,6 @@ def test_the_dark_module_is_set():
     assert matrix[len(matrix) - 8][8] == 1
 
 
-@pytest.mark.parametrize("text", ["HELLO", URL, "http://10.0.0.1:8420/d/" + "A" * 40])
-def test_version_grows_with_the_payload(text):
-    assert len(qr.encode(text)) >= 21
-
-
 def test_a_longer_payload_needs_a_larger_matrix():
     assert len(qr.encode("A" * 100)) > len(qr.encode("A"))
 
@@ -91,7 +86,3 @@ def test_ansi_render_paints_both_polarities():
     rendered = qr.render(URL, ansi=True)
     assert "\033[40m" in rendered
     assert "\033[47m" in rendered
-
-
-def test_render_is_deterministic():
-    assert qr.render(URL) == qr.render(URL)

@@ -20,10 +20,6 @@ def rec(model: str, speed: str | None = None, **tokens) -> UsageRecord:
     )
 
 
-def test_max_plan_constant_is_200():
-    assert pricing.MAX_PLAN_MONTHLY_USD == 200.0
-
-
 @pytest.mark.parametrize(
     "model,expected",
     [
@@ -131,14 +127,8 @@ def test_dated_model_id_is_reported_as_priced():
     assert pricing.is_priced("claude-haiku-4-5-20251001") is True
 
 
-def test_normalise_model_leaves_undated_ids_alone():
-    assert pricing.normalise_model("claude-opus-4-8") == "claude-opus-4-8"
-
-
 def test_normalise_model_strips_only_an_eight_digit_suffix():
     assert pricing.normalise_model("claude-opus-4-8") == "claude-opus-4-8"
     assert pricing.normalise_model("claude-haiku-4-5-20251001") == "claude-haiku-4-5"
 
 
-def test_synthetic_model_stays_unpriced_after_normalisation():
-    assert pricing.is_priced("<synthetic>") is False

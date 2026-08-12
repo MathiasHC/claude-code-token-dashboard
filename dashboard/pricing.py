@@ -6,8 +6,6 @@ import re
 
 from .models import CostBreakdown, UsageRecord
 
-MAX_PLAN_MONTHLY_USD = 200.0
-
 # Some transcripts carry a dated model id, e.g. claude-haiku-4-5-20251001.
 DATED_MODEL_SUFFIX = re.compile(r"-\d{8}$")
 

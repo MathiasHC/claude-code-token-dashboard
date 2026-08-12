@@ -7,7 +7,7 @@ having any real usage on the machine:
 
 Every figure is invented, but nothing here is hand-written: this builds a
 few thousand fake `UsageRecord`s and runs them through the real
-`aggregate.build`, so the totals, shares, averages and cache-hit rate are
+`aggregate.build`, so the totals, shares, averages and cache economics are
 all derived exactly the way the live dashboard derives them.
 
 That matters for more than tidiness. An earlier version wrote the panel

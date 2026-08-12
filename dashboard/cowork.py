@@ -89,13 +89,8 @@ def session_labels(root: Path) -> dict[str, str]:
     return labels
 
 
-def project_resolver(labels: dict[str, str]):
-    """Build a cwd -> project-label function for Cowork transcripts."""
-    return lazy_project_resolver(lambda: labels)
-
-
 def lazy_project_resolver(load: Callable[[], dict[str, str]]):
-    """As project_resolver, but only loads the labels if something asks.
+    """Build a cwd -> project-label function, loading labels only on demand.
 
     A warm refresh usually reads no Cowork transcript at all, and reading
     every sidecar JSON to answer zero questions cost more per request than

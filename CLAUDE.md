@@ -45,6 +45,8 @@ belongs in the unit file for the same reason.
 
 ```
 dashboard/
+  models.py       the shared types, including Plan, RangeView and DashboardData
+  dates.py        parse a transcript timestamp / a stored ISO day (pure)
   scan.py         parse transcripts (the only module that knows the JSONL shape)
   cowork.py       locate + label Claude Desktop Cowork sessions
   ingest.py       compose the scan across sources, dedupe by message id
@@ -52,11 +54,15 @@ dashboard/
   aggregate.py    records -> DashboardData (pure; `now` is injected)
   pricing.py      model rate table and cost arithmetic (pure)
   plans.py        which subscription to compare against
-  ranges.py       which slice of history the breakdown panels cover
+  ranges.py       every day window on the page, catalogue and comparisons
+  freshness.py    how current the numbers are, and what to show when they aren't
   render_html.py  DashboardData -> one HTML document (pure)
   web.py          stdlib http.server, LAN-bound, token-gated
 tools/demo_page.py  render synthetic demo data (used for the README screenshot)
 ```
+
+Domain terms are defined in `CONTEXT.md`; decisions that should not be
+re-litigated are in `docs/adr/`.
 
 ## Conventions
 
@@ -72,10 +78,17 @@ tools/demo_page.py  render synthetic demo data (used for the README screenshot)
   `?range=…` with a server-rendered "current" state, because the no-JavaScript
   rule rules out dropdowns that submit on change and cards that need `:hover`
   to look clickable. Anything interactive added later has to work the same way.
-- **The hero row is global.** Today / 7 days / MTD / all-time and their deltas
-  never follow the selected range — only the panels below them do. A summary
-  that disagreed with its own panels would be worse than no ranges at all,
-  and a test pins it.
+- **The page has exactly two scopes, and the type says which.** The hero row
+  and its deltas are global — they never follow the selected range. Everything
+  that does follow it lives on `DashboardData.scoped`, a `RangeView` carrying
+  its own `label`. Put a range-scoped figure anywhere else and nothing forces
+  the panel to admit which window it is showing, which is how the bands ended
+  up unlabelled and the DAILY heading ended up quoting a window it had not
+  measured.
+- **Every day window comes from `ranges`.** Not just the five in the selector —
+  yesterday, the prior 7 days and the same point last month are the same kind
+  of question. Deciding what a malformed day means happens once, in
+  `dates.parse_day`.
 - **Never assert against a real `~/.claude` tree in tests** — its totals change
   with every message. Fixtures live in `tests/fixtures/`. The one live check is
   opt-in (`DASHBOARD_LIVE_SMOKE=1`) and asserts shape only.

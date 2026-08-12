@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import json
 import os
@@ -12,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
+from .dates import local_day
 from .models import UsageRecord
 
 WORKTREE_RE = re.compile(r"^(?P<parent>.*?)/\.claude/worktrees/")
@@ -70,21 +70,9 @@ def session_title(raw: str) -> str:
     return " ".join(raw.split())
 
 
-def local_day(ts: str) -> str:
-    """Local calendar date for a UTC transcript timestamp.
-
-    Transcript timestamps are UTC with a Z suffix. Slicing the string would
-    bucket work done after local midnight onto the previous day.
-    """
-    if not ts:
-        return ""
-    try:
-        moment = dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        return ""
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=dt.timezone.utc)
-    return moment.astimezone().date().isoformat()
+# `scan.local_day` is re-exported from .dates — see the import above. It is
+# how the rest of the package has always named this, but the parsing itself
+# belongs with the other timestamp handling rather than with the JSONL reader.
 
 
 def _cache_writes(usage: dict) -> tuple[int, int]:

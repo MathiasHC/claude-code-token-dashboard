@@ -9,7 +9,7 @@ from __future__ import annotations
 from html import escape
 
 from . import ranges
-from .models import Bar, DashboardData
+from .models import Bar, DashboardData, RangeView
 
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
 #: Hard cap on how much of a session title reaches the markup. This is a
@@ -178,10 +178,10 @@ def _axis_label(value: float) -> str:
     return f"${value:,.2f}"
 
 
-def _daily(data: DashboardData) -> str:
-    if not data.daily:
+def _daily(view: RangeView, today_day: str) -> str:
+    if not view.daily:
         return '<div class="note">no daily history yet</div>'
-    peak = max(point.cost for point in data.daily) or 1.0
+    peak = max(point.cost for point in view.daily) or 1.0
     # Bars are measured against the top gridline, not against the peak, so
     # the axis labels mean what they say.
     step = _axis_step(peak)
@@ -194,11 +194,11 @@ def _daily(data: DashboardData) -> str:
     )
 
     cells = []
-    for point in data.daily:
+    for point in view.daily:
         height = max(1, min(DAILY_CHART_HEIGHT_PX, round(point.cost / top * DAILY_CHART_HEIGHT_PX)))
         # One bar out of thirty is the only one still moving; without a
         # colour it takes a squint to find.
-        today = " today" if point.day and point.day == data.today_day else ""
+        today = " today" if point.day and point.day == today_day else ""
         cells.append(
             f'<td><div class="col{today}" style="height:{height}px"></div></td>'
         )
@@ -206,10 +206,24 @@ def _daily(data: DashboardData) -> str:
         f'<div class="chartwrap" style="height:{DAILY_CHART_HEIGHT_PX}px">{lines}'
         f'<table class="daily" style="height:{DAILY_CHART_HEIGHT_PX}px">'
         f"<tr>{''.join(cells)}</tr></table></div>"
-        f'<div class="dscale">{escape(data.daily[0].day)}'
-        f'<span style="float:right">{escape(data.daily[-1].day)}'
+        f'<div class="dscale">{escape(view.daily[0].day)}'
+        f'<span style="float:right">{escape(view.daily[-1].day)}'
         f" &middot; peak {_money(peak)}</span></div>"
     )
+
+
+def _daily_heading(view: RangeView) -> str:
+    """What the chart is actually showing.
+
+    This used to read `LAST {len(daily)} DAYS`, which counted the days that
+    carried spend and then presented that count as a window: a 30-day range
+    with three active days announced "LAST 3 DAYS", and every range announced
+    "LAST 1 DAYS" on a history one day long. The window and the bar count are
+    two different facts, so the heading now states both.
+    """
+    days = view.active_day_count
+    noun = "DAY" if days == 1 else "DAYS"
+    return f"DAILY &middot; {escape(view.label)} &middot; {days} ACTIVE {noun}"
 
 
 def _change_text(change: float | None, comparison: str) -> str:
@@ -247,18 +261,18 @@ def _meter(label: str, amount: float, share: float, colour: str, last: bool = Fa
     )
 
 
-def _split_band(data: DashboardData) -> str:
-    total = data.main_cost + data.subagent_cost
+def _split_band(view: RangeView) -> str:
+    total = view.main_cost + view.subagent_cost
     if total <= 0:
         return ""
     return (
-        '<div class="bandtitle">DELEGATION</div>'
-        + _meter("main", data.main_cost, data.main_cost / total, "#58a6ff")
-        + _meter("subagents", data.subagent_cost, data.subagent_share, "#d29922", last=True)
+        f'<div class="bandtitle">DELEGATION &middot; {escape(view.label)}</div>'
+        + _meter("main", view.main_cost, view.main_cost / total, "#58a6ff")
+        + _meter("subagents", view.subagent_cost, view.subagent_share, "#d29922", last=True)
     )
 
 
-def _source_band(data: DashboardData) -> str:
+def _source_band(view: RangeView) -> str:
     """Which Claude surface the spend came from.
 
     Only surfaces that persist token counts locally can appear here — Claude
@@ -266,30 +280,33 @@ def _source_band(data: DashboardData) -> str:
     claude.ai bill server-side and write no usage to disk, so their absence
     is a property of the data, not an omission by this panel.
     """
-    if not data.by_source:
+    if not view.by_source:
         return ""
-    parts = ['<div class="bandtitle">BY SOURCE</div>']
-    for index, bar in enumerate(data.by_source):
+    parts = [f'<div class="bandtitle">BY SOURCE &middot; {escape(view.label)}</div>']
+    for index, bar in enumerate(view.by_source):
         parts.append(
             _meter(
                 bar.label,
                 bar.cost,
                 bar.share,
                 SOURCE_COLOURS[index % len(SOURCE_COLOURS)],
-                last=(index == len(data.by_source) - 1),
+                last=(index == len(view.by_source) - 1),
             )
         )
     return "".join(parts)
 
 
-def _bands(data: DashboardData) -> str:
+def _bands(view: RangeView) -> str:
     """Lay the bands side by side.
 
     Stacking them would cost ~60px of a 748px budget and push the daily
     chart off the iPad's first screen, so an absent band collapses the row
     to a single full-width cell rather than leaving a hole.
+
+    Both bands name the range. They are as range-scoped as the panels below
+    them and used to be the only figures on the page that did not say so.
     """
-    cells = [band for band in (_split_band(data), _source_band(data)) if band]
+    cells = [band for band in (_split_band(view), _source_band(view)) if band]
     if not cells:
         return ""
     span = ' colspan="2"' if len(cells) == 1 else ""
@@ -317,21 +334,21 @@ def _plan_comparison(data: DashboardData) -> str:
     the least of it, since the api-equivalent figure *is* the bill in that
     case. Say that instead of printing a 0.0x multiple.
     """
-    if data.max_plan_monthly_usd <= 0:
+    if data.plan.monthly_usd <= 0:
         return (
-            f"vs {escape(data.plan_label)} &nbsp; "
+            f"vs {escape(data.plan.label)} &nbsp; "
             f"{_money(data.month_to_date.cost)} api-equivalent &middot; "
             f"no subscription to compare against{_pace_clause(data)}"
         )
     return (
-        f"vs {escape(data.plan_label)} &nbsp; {_money(data.month_to_date.cost)} "
-        f"api-equivalent / {_money(data.max_plan_monthly_usd)} actual = "
+        f"vs {escape(data.plan.label)} &nbsp; {_money(data.month_to_date.cost)} "
+        f"api-equivalent / {_money(data.plan.monthly_usd)} actual = "
         f'<span class="mult">{data.effective_multiple:.1f}&times;</span> effective'
         f"{_pace_clause(data)}"
     )
 
 
-def _cache_note(data: DashboardData) -> str:
+def _cache_note(view: RangeView) -> str:
     """What caching bought, rather than how often it hit.
 
     Hit rate is saturated on any real history — measured at 99.68%-100.00%
@@ -342,13 +359,13 @@ def _cache_note(data: DashboardData) -> str:
     money that was once in play; it never was. There is no tooltip on
     iOS 5.1.1, so the counterfactual has to sit in the visible text.
     """
-    if data.cache_read_tokens <= 0:
+    if view.cache_read_tokens <= 0:
         return "no cache reads yet"
-    if data.cache_saved <= 0:
+    if view.cache_saved <= 0:
         # Reads happened, but on models with no rate — claiming "no cache
         # reads yet" would deny something that is on the page above.
         return "cache reads on unpriced models only"
-    return f"caching saved {_money(data.cache_saved)} &middot; same tokens at uncached rates"
+    return f"caching saved {_money(view.cache_saved)} &middot; same tokens at uncached rates"
 
 
 def _live(data: DashboardData) -> str:
@@ -361,22 +378,7 @@ def _live(data: DashboardData) -> str:
     return f'<span class="live">{_money(data.burn_rate_hourly)}/hr{idle}</span>'
 
 
-def _refresh_content(seconds: int) -> str:
-    """How the page reloads itself.
-
-    A bare `content="30"` reloads the *current* URL, query string included,
-    so a selected range survives every refresh — this is the whole mechanism.
-
-    An earlier version pointed the refresh back at the default view, on the
-    theory that an always-on display should keep returning to one glanceable
-    screen. In use that pulled the selection out from under anyone reading a
-    range, which made the feature close to unusable. A range now sticks until
-    something else is clicked.
-    """
-    return str(seconds)
-
-
-def _range_selector(data: DashboardData, base_path: str) -> str:
+def _range_selector(view: RangeView, base_path: str) -> str:
     """A row of ordinary links, one per range.
 
     Deliberately anchors rather than a <select> or clickable cards: this page
@@ -387,8 +389,12 @@ def _range_selector(data: DashboardData, base_path: str) -> str:
     """
     cells = []
     for entry in ranges.CATALOGUE:
-        current = " on" if entry.key == data.range_key else ""
-        href = base_path if entry.key == ranges.DEFAULT.key else f"{base_path}?range={entry.key}"
+        current = " on" if entry.key == view.key else ""
+        href = (
+            base_path
+            if entry.key == ranges.DEFAULT.key
+            else f"{base_path}?{ranges.QUERY_KEY}={entry.key}"
+        )
         cells.append(
             f'<td class="rangecell">'
             f'<a class="range{current}" href="{escape(href)}">{escape(entry.label)}</a></td>'
@@ -404,6 +410,7 @@ def render(
     base_path: str = "",
 ) -> str:
     banner = f'<div class="warn">{escape(warning)}</div>' if warning else ""
+    view = data.scoped
 
     unpriced = ""
     if data.unpriced_models:
@@ -418,7 +425,7 @@ def render(
     return f"""<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="{_refresh_content(refresh_seconds)}">
+<meta http-equiv="refresh" content="{refresh_seconds}">
 <meta name="viewport" content="width=1024, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -438,26 +445,26 @@ def render(
  &middot; {month_text}</span>
 {_plan_comparison(data)}
 </div>
-{_bands(data)}
-{_range_selector(data, base_path)}
+{_bands(view)}
+{_range_selector(view, base_path)}
 <table class="grid"><tbody>
 <tr>
-<td><h2>WHERE THE MONEY GOES &middot; {escape(data.range_label)}</h2>{_rows(data.money)}
-<div class="note">{_cache_note(data)}</div></td>
-<td><h2>BY MODEL &middot; {escape(data.range_label)}</h2>{_rows(data.by_model)}
-<div class="note">avg {_money(data.avg_cost_per_message)}/msg &middot;
-{_money(data.avg_cost_per_session)}/session</div>{unpriced}</td>
+<td><h2>WHERE THE MONEY GOES &middot; {escape(view.label)}</h2>{_rows(view.money)}
+<div class="note">{_cache_note(view)}</div></td>
+<td><h2>BY MODEL &middot; {escape(view.label)}</h2>{_rows(view.by_model)}
+<div class="note">avg {_money(view.avg_cost_per_message)}/msg &middot;
+{_money(view.avg_cost_per_session)}/session</div>{unpriced}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
 <tr>
-<td><h2>BY PROJECT &middot; {escape(data.range_label)}</h2>{_rows(data.by_project)}</td>
-<td><h2>BY SKILL &middot; {escape(data.range_label)} &middot; ATTRIBUTED</h2>{_rows(data.by_skill)}</td>
-<td><h2>TOP SESSIONS &middot; {escape(data.range_label)}</h2>{_session_rows(data.top_sessions)}</td>
+<td><h2>BY PROJECT &middot; {escape(view.label)}</h2>{_rows(view.by_project)}</td>
+<td><h2>BY SKILL &middot; {escape(view.label)} &middot; ATTRIBUTED</h2>{_rows(view.by_skill)}</td>
+<td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
-<tr><td><h2>DAILY &middot; LAST {len(data.daily)} DAYS</h2>{_daily(data)}</td></tr>
+<tr><td><h2>{_daily_heading(view)}</h2>{_daily(view, data.today_day)}</td></tr>
 </tbody></table>
 </body></html>
 """

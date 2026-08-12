@@ -35,6 +35,13 @@ def default_sources(
     projects_dir: Path | None = None,
     cowork_dir: Path | None = None,
 ) -> list[Source]:
+    """Where each surface keeps its transcripts.
+
+    Adding a surface also means a display name in aggregate.SOURCE_LABELS, and
+    for anything shaped like Cowork a glob in cowork.TRANSCRIPT_PATTERN and a
+    root override beside it. That split is deliberate — see
+    docs/adr/0001-source-table-split.md.
+    """
     return [
         Source(
             name="code",

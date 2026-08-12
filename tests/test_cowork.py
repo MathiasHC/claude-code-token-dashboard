@@ -61,13 +61,13 @@ def test_unreadable_sidecar_does_not_lose_the_other_sessions(tmp_path):
 
 
 def test_resolver_maps_a_session_cwd_to_its_label():
-    resolve = cowork.project_resolver(cowork.session_labels(COWORK_FIXTURES))
+    resolve = cowork.lazy_project_resolver(lambda: cowork.session_labels(COWORK_FIXTURES))
     assert resolve("/x/local-agent-mode-sessions/i/o/local_aaa/outputs") == "gamma"
 
 
 @pytest.mark.parametrize("cwd", [None, "", "/somewhere/else/outputs"])
 def test_resolver_falls_back_when_the_session_is_unknown(cwd):
-    resolve = cowork.project_resolver({})
+    resolve = cowork.lazy_project_resolver(dict)
     assert resolve(cwd) == cowork.FALLBACK_LABEL
 
 
@@ -88,10 +88,6 @@ def test_default_cowork_dir_honours_the_environment_override(monkeypatch):
 
 def test_scan_stamps_the_source_on_every_record():
     assert {r.source for r in scan.scan(CODE_FIXTURES).records} == {"code"}
-
-
-def test_scan_defaults_to_code_so_existing_callers_are_unaffected():
-    assert scan.scan(CODE_FIXTURES, source="code").records[0].source == "code"
 
 
 def test_scan_accepts_a_project_resolver_override():
@@ -167,18 +163,18 @@ def test_dashboard_splits_cost_by_source(tmp_path):
     with Store(tmp_path / "history.db") as db:
         db.ingest(ingest.scan_sources(ingest.default_sources(CODE_FIXTURES, COWORK_FIXTURES)))
         data = aggregate.build(db.records(), db.titles(), now=NOW)
-    amounts = {bar.label: bar.cost for bar in data.by_source}
+    amounts = {bar.label: bar.cost for bar in data.scoped.by_source}
     assert amounts["Desktop (Cowork)"] == pytest.approx(COWORK_TOTAL, abs=1e-9)
     assert amounts["Claude Code"] == pytest.approx(0.2585, abs=1e-9)
-    assert sum(bar.share for bar in data.by_source) == pytest.approx(1.0, abs=1e-9)
+    assert sum(bar.share for bar in data.scoped.by_source) == pytest.approx(1.0, abs=1e-9)
 
 
 def test_cowork_project_label_reaches_the_project_breakdown(tmp_path):
     with Store(tmp_path / "history.db") as db:
         db.ingest(ingest.scan_sources(ingest.default_sources(CODE_FIXTURES, COWORK_FIXTURES)))
         data = aggregate.build(db.records(), db.titles(), now=NOW)
-    assert "gamma" in {bar.label for bar in data.by_project}
-    assert "outputs" not in {bar.label for bar in data.by_project}
+    assert "gamma" in {bar.label for bar in data.scoped.by_project}
+    assert "outputs" not in {bar.label for bar in data.scoped.by_project}
 
 
 def test_an_unknown_source_is_shown_rather_than_dropped():
@@ -186,4 +182,4 @@ def test_an_unknown_source_is_shown_rather_than_dropped():
     record = scan.scan(CODE_FIXTURES).records[0]
     future = record._replace(source="chrome")
     data = aggregate.build([future], {}, now=NOW)
-    assert [bar.label for bar in data.by_source] == ["chrome"]
+    assert [bar.label for bar in data.scoped.by_source] == ["chrome"]

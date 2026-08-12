@@ -34,8 +34,8 @@ _CONFUSABLE = str.maketrans({"I": "1", "L": "1", "O": "0"})
 _HYPHENS = re.compile(r"[-\s]")
 
 
-def new_token(length: int = DEFAULT_LENGTH) -> str:
-    return "".join(secrets.choice(ALPHABET) for _ in range(length))
+def new_token() -> str:
+    return "".join(secrets.choice(ALPHABET) for _ in range(DEFAULT_LENGTH))
 
 
 def is_crockford(token: str) -> bool:

@@ -31,10 +31,23 @@ class UsageRecord(NamedTuple):
     cache_write_1h: int = 0
     speed: str | None = None
     is_subagent: bool = False
-    #: Which Claude surface produced this message — see aggregate.SOURCE_LABELS.
+    #: Which Claude surface produced this message — see ingest.SOURCE_LABELS.
     #: "code" is the default so records predating the multi-source scan, and
     #: every existing row in an old database, read back as Claude Code.
     source: str = "code"
+
+
+class Plan(NamedTuple):
+    """A subscription to compare api-equivalent cost against.
+
+    Label and amount travel together. They were previously split into two
+    arguments at the one call site that had both, which meant nothing stopped
+    a page rendering "vs Pro ... / $200.00 actual".
+    """
+
+    key: str
+    label: str
+    monthly_usd: float
 
 
 @dataclass(frozen=True)
@@ -60,7 +73,6 @@ class Bar:
 
 @dataclass(frozen=True)
 class Window:
-    label: str
     cost: float
     messages: int
 
@@ -72,40 +84,39 @@ class DayCost:
 
 
 @dataclass(frozen=True)
-class DashboardData:
-    generated_at: str
-    today: Window
-    last_7_days: Window
-    month_to_date: Window
-    all_time: Window
-    active_days: int
-    max_plan_monthly_usd: float
-    prev_month_label: str
-    prev_month_cost: float
-    #: How the comparison plan is named on the page. Kept beside the amount
-    #: so the band says what it is comparing against, rather than hard-coding
-    #: one subscription tier into the markup.
-    plan_label: str = "Max 20×"
-    #: Which slice of history the breakdown panels below the hero row cover.
-    #: The hero row itself is always the same four windows.
-    range_key: str = "all"
-    range_label: str = "ALL TIME"
-    yesterday_cost: float = 0.0
-    prior_7_days_cost: float = 0.0
-    prev_month_to_date_cost: float = 0.0
+class RangeView:
+    """Everything the selected range re-scopes, plus the label that says so.
+
+    The page has exactly two scopes. The hero row and its deltas are global
+    by construction — they are the fixed summary and do not move when a range
+    is picked. Everything here does move, and every panel built from it has to
+    admit which window it is showing.
+
+    That invariant used to live only in prose, in aggregate.build, while all
+    thirty-odd figures sat in one flat namespace on DashboardData. Two panels
+    had already drifted: the DELEGATION and BY SOURCE bands rendered
+    range-scoped numbers with no label at all, and the DAILY heading derived
+    its window from `len(daily)` — the number of days that happened to carry
+    spend — so a 30-day range with three active days announced "LAST 3 DAYS".
+
+    Nesting them behind one value with `label` on it makes rendering a scoped
+    figure without saying which range it belongs to something you have to go
+    out of your way to do.
+    """
+
+    #: The catalogue key, e.g. "7d". What the selector marks as current.
+    key: str
+    #: The long form for panel headings, e.g. "LAST 7 DAYS".
+    label: str
     money: list[Bar] = field(default_factory=list)
     by_model: list[Bar] = field(default_factory=list)
     by_project: list[Bar] = field(default_factory=list)
     by_skill: list[Bar] = field(default_factory=list)
+    by_source: list[Bar] = field(default_factory=list)
     top_sessions: list[Bar] = field(default_factory=list)
     daily: list[DayCost] = field(default_factory=list)
-    cache_hit_rate: float = 0.0
-    avg_cost_per_message: float = 0.0
-    avg_cost_per_session: float = 0.0
-    unpriced_models: list[str] = field(default_factory=list)
     main_cost: float = 0.0
     subagent_cost: float = 0.0
-    by_source: list[Bar] = field(default_factory=list)
     #: Counterfactual: what the cache-read tokens would have cost at full
     #: input rates. Never money that was in play — see render_html, which is
     #: required to say so on the page.
@@ -113,6 +124,40 @@ class DashboardData:
     #: Kept alongside cache_saved so the page can tell "no cache reads"
     #: apart from "cache reads we have no rate for".
     cache_read_tokens: int = 0
+    avg_cost_per_message: float = 0.0
+    avg_cost_per_session: float = 0.0
+
+    @property
+    def subagent_share(self) -> float:
+        total = self.main_cost + self.subagent_cost
+        return self.subagent_cost / total if total else 0.0
+
+    @property
+    def active_day_count(self) -> int:
+        """Days inside the range that carried any spend — which is what the
+        daily chart plots, one bar each."""
+        return len(self.daily)
+
+
+@dataclass(frozen=True)
+class DashboardData:
+    generated_at: str
+    today: Window
+    last_7_days: Window
+    month_to_date: Window
+    all_time: Window
+    active_days: int
+    prev_month_label: str
+    prev_month_cost: float
+    #: Which slice of history the panels below the hero row cover. The hero
+    #: row itself is always the same four windows.
+    scoped: RangeView
+    #: What the api-equivalent cost is being compared against.
+    plan: Plan
+    yesterday_cost: float = 0.0
+    prior_7_days_cost: float = 0.0
+    prev_month_to_date_cost: float = 0.0
+    unpriced_models: list[str] = field(default_factory=list)
     #: Month-to-date plus the trailing-7-day rate over the days remaining.
     #: None early in a month, where the trailing window is mostly last month.
     on_pace: float | None = None
@@ -125,15 +170,10 @@ class DashboardData:
     today_day: str = ""
 
     @property
-    def subagent_share(self) -> float:
-        total = self.main_cost + self.subagent_cost
-        return self.subagent_cost / total if total else 0.0
-
-    @property
     def effective_multiple(self) -> float:
-        if self.max_plan_monthly_usd <= 0:
+        if self.plan.monthly_usd <= 0:
             return 0.0
-        return self.month_to_date.cost / self.max_plan_monthly_usd
+        return self.month_to_date.cost / self.plan.monthly_usd
 
     @property
     def day_change(self) -> float | None:

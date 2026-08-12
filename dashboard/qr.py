@@ -361,7 +361,13 @@ def _function_cells(size: int, version: int, reserved: set[tuple[int, int]]) -> 
     return cells
 
 
-def render(text: str, ansi: bool = False, quiet_zone: int = 4) -> str:
+#: Modules of margin around the code. Not decoration — the spec requires
+#: four, and readers genuinely fail without it. Fixed rather than a
+#: parameter: nothing has ever wanted a different one.
+QUIET_ZONE = 4
+
+
+def render(text: str, ansi: bool = False) -> str:
     """The matrix as text.
 
     Polarity is the trap here. A terminal's background may be light or dark,
@@ -370,16 +376,13 @@ def render(text: str, ansi: bool = False, quiet_zone: int = 4) -> str:
     which paints each module's background explicitly and is correct on any
     theme; the block form exists for tests and for pasting into places that
     strip colour.
-
-    The quiet zone is not decoration — the spec requires four modules of
-    margin, and readers genuinely fail without it.
     """
     matrix = encode(text)
     size = len(matrix)
-    width = size + quiet_zone * 2
-    rows = [[0] * width for _ in range(quiet_zone)]
-    rows += [[0] * quiet_zone + row + [0] * quiet_zone for row in matrix]
-    rows += [[0] * width for _ in range(quiet_zone)]
+    width = size + QUIET_ZONE * 2
+    rows = [[0] * width for _ in range(QUIET_ZONE)]
+    rows += [[0] * QUIET_ZONE + row + [0] * QUIET_ZONE for row in matrix]
+    rows += [[0] * width for _ in range(QUIET_ZONE)]
 
     if ansi:
         dark, light = "\033[40m  \033[0m", "\033[47m  \033[0m"
