@@ -7,13 +7,14 @@ import errno
 import os
 import secrets
 import socket
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from . import aggregate, cowork, ingest, plans, ranges, render_html, scan, store
+from . import aggregate, cowork, ingest, plans, qr, ranges, render_html, scan, store, tokens
 
 DEFAULT_PORT = 8420
 DEFAULT_MIN_INGEST_INTERVAL = 10.0
@@ -27,7 +28,7 @@ def load_or_create_token(directory: Path) -> str:
         existing = path.read_text(encoding="utf-8").strip()
         if existing:
             return existing
-    token = secrets.token_urlsafe(16)
+    token = tokens.new_token()
     if path.exists():
         # Pre-existing but empty (e.g. a previous run crashed mid-write) —
         # O_EXCL below would refuse to open it, so truncate instead.
@@ -206,7 +207,6 @@ def _inject_warning(page: str, warning: str) -> str:
 
 
 def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
-    expected_path = f"/d/{token}"
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "ClaudeTokenDashboard/0.1"
@@ -222,11 +222,17 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             # secret, so `?range=…` must not participate in the comparison —
             # but the comparison itself stays constant-time over the path.
             raw_path, _, query = self.path.partition("?")
-            if not secrets.compare_digest(
-                raw_path.encode("utf-8", "surrogateescape"),
-                expected_path.encode("utf-8"),
-            ):
-                self.send_error(404, "Not Found")
+            # A trailing slash is the single easiest way to mistype this URL,
+            # and some clients add one on their own. It cannot change which
+            # resource is meant, so accept it rather than answering 404 to a
+            # request that is right in every way that matters.
+            if raw_path.endswith("/") and raw_path != "/":
+                raw_path = raw_path.rstrip("/")
+            prefix, _, candidate = raw_path.rpartition("/")
+            # The prefix is not secret, so an ordinary comparison is fine.
+            # Only the token goes through the constant-time path.
+            if prefix != "/d" or not tokens.matches(token, candidate):
+                self.send_not_found()
                 return
             # An unknown or malformed range falls back to the default rather
             # than erroring: it is a stale bookmark, not an attack.
@@ -239,10 +245,54 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def send_not_found(self) -> None:
+            """404 that is explicitly not cacheable.
+
+            send_error() sets no caching headers, and a 404 is cacheable by
+            default under HTTP/1.1. A browser that mistypes the token once can
+            therefore keep serving itself the cached failure after the URL is
+            corrected — which looks exactly like the token still being wrong.
+            """
+            body = b"Not Found"
+            self.send_response(404, "Not Found")
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, fmt: str, *args: object) -> None:
             return  # a wall display polling every 30s would flood the console
 
     return Handler
+
+
+def port_80_holder(host: str = "127.0.0.1", timeout: float = 0.4) -> str | None:
+    """Whatever is listening on port 80, or None.
+
+    Not idle curiosity. If the URL loses its ":8420" — retyped on a phone,
+    truncated in a note, "helpfully" tidied by something in between — the
+    request goes to port 80 instead. When something else answers there the
+    user sees ITS 404, which looks identical to the token being wrong and
+    sends them debugging the wrong thing entirely.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.settimeout(timeout)
+    try:
+        if probe.connect_ex((host, 80)) != 0:
+            return None
+        probe.sendall(b"HEAD / HTTP/1.0\r\nHost: localhost\r\n\r\n")
+        reply = probe.recv(512).decode("latin-1", "replace")
+    except OSError:
+        return None
+    finally:
+        probe.close()
+    for line in reply.splitlines():
+        if line.lower().startswith("server:"):
+            return line.split(":", 1)[1].strip() or "an unidentified server"
+    return "an unidentified server"
 
 
 def bind_message(host: str, port: int, error: OSError) -> str:
@@ -296,9 +346,24 @@ def serve(
         refresh_seconds=refresh_seconds,
     )
     httpd = bind(host, port, build_handler(app, token))
-    print(f"Claude token dashboard on http://{local_ip()}:{port}/d/{token}")
+    url = f"http://{local_ip()}:{port}/d/{token}"
+    print(f"Claude token dashboard on {url}")
     print(f"Comparing against {app.plan.label}. Change it with --plan.")
     print("Open that on the iPad, then Share > Add to Home Screen. Ctrl-C to stop.")
+
+    if sys.stdout.isatty():
+        # Only for a terminal: ANSI blocks are noise in a log file, and a
+        # code nobody can point a camera at is just clutter.
+        print()
+        print(qr.render(url, ansi=True))
+
+    other = port_80_holder()
+    if other is not None:
+        print()
+        print(f"NOTE: {other} is listening on port 80 of this machine.")
+        print(f"      The URL above must keep its \":{port}\". Without it the")
+        print("      request goes to that server instead, and its 404 looks")
+        print("      exactly like a wrong token.")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

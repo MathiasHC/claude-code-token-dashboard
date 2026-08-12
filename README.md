@@ -431,6 +431,21 @@ not mixed into these totals.
   transcripts. Older databases are migrated in place on open.
 - The access token is `~/.claude-token-dashboard/token`. Delete it to roll the
   URL; a new one is generated on the next start.
+
+  Tokens are 16 characters of Crockford base32 — one case, and no `I`, `L`,
+  `O` or `U`, so there is no `1`/`I` or `0`/`O` to get wrong. Matching is
+  deliberately forgiving of how transcription actually fails: case is
+  ignored, `I`/`L`/`O` fold to `1`/`1`/`0`, and hyphens or spaces you add to
+  break the string up are ignored too. Tokens issued before this still work
+  and are matched case-insensitively, but are not folded — they may contain
+  a literal `I` or `L` that means itself.
+
+  None of that widens the target beyond a small equivalence class around one
+  16-character secret, which is still far past guessing on a home network.
+
+  At startup the URL is also printed as a QR code when the terminal can show
+  one. Not much help to a first-generation iPad, which has no camera — but it
+  saves retyping on anything newer.
 - Your plan answer is `~/.claude-token-dashboard/config.json` (override with
   `CLAUDE_DASHBOARD_CONFIG`). Delete it to be asked again.
 
@@ -474,6 +489,12 @@ browser history and any proxy logs in between.
 **Do not forward the port to the internet.** If you need it away from home,
 put it behind a VPN or an authenticating reverse proxy rather than exposing it
 directly.
+
+**Keep the port in the URL.** If something else on the machine serves port 80
+— Apache and nginx both do by default on macOS and many Linux installs — then
+a URL missing its `:8420` reaches that server instead, and its 404 looks
+exactly like a wrong token. The dashboard checks port 80 at startup and warns
+you by name if anything is there.
 
 ## Troubleshooting
 

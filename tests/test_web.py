@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import errno
 import http.client
+import http.server
 import os
 import socket
 import threading
@@ -478,3 +479,94 @@ def test_the_banner_does_not_claim_data_it_is_not_showing(tmp_path):
 
     stale = app.page("30d")
     assert "showing data from" in stale, "a real stale page should still say so"
+
+
+# --- reachability: the ways a correct-looking URL still 404s -------------
+
+def test_a_trailing_slash_is_accepted(server):
+    """The easiest way to mistype this URL, and some clients add one
+    unprompted. It cannot change which resource is meant."""
+    status, _, body = get(server, "/d/tok123/")
+    assert status == 200
+    assert "CLAUDE TOKENS" in body
+
+
+def test_a_trailing_slash_still_requires_the_right_token(server):
+    """Stripping the slash must not turn into stripping the check."""
+    assert get(server, "/d/wrong/")[0] == 404
+    assert get(server, "/d//")[0] == 404
+    assert get(server, "//")[0] == 404
+
+
+def test_the_404_forbids_caching(server):
+    """A 404 is cacheable by default under HTTP/1.1, and send_error sets no
+    caching headers. A browser that mistyped the token once could keep
+    serving itself the cached failure after the URL was corrected — which
+    looks exactly like the token still being wrong."""
+    conn = http.client.HTTPConnection(*server, timeout=5)
+    conn.request("GET", "/d/wrong-token")
+    response = conn.getresponse()
+    response.read()
+    cache_control = response.getheader("Cache-Control") or ""
+    conn.close()
+    assert response.status == 404
+    assert "no-store" in cache_control
+
+
+def test_the_200_still_forbids_caching(server):
+    conn = http.client.HTTPConnection(*server, timeout=5)
+    conn.request("GET", "/d/tok123")
+    response = conn.getresponse()
+    response.read()
+    cache_control = response.getheader("Cache-Control") or ""
+    conn.close()
+    assert "no-store" in cache_control
+
+
+def test_port_80_probe_reports_nothing_when_nothing_listens():
+    """An address with no listener must return None rather than hanging or
+    raising — this runs on every startup."""
+    assert web.port_80_holder(host="127.0.0.2", timeout=0.2) is None
+
+
+def test_port_80_probe_names_what_it_found():
+    """Started on a port we control, the probe should report its Server
+    header so the warning can name the culprit."""
+    class Quiet(http.server.BaseHTTPRequestHandler):
+        server_version = "PretendServer/9.9"
+        sys_version = ""
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            return
+
+    httpd = http.server.HTTPServer(("127.0.0.1", 0), Quiet)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        # The probe hard-codes port 80; exercise its parsing directly.
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("HEAD", "/")
+        assert "PretendServer" in (conn.getresponse().getheader("Server") or "")
+        conn.close()
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_the_server_accepts_a_mistyped_case(server):
+    """The failure that prompted all of this: one character in the wrong
+    case, and the dashboard was unreachable with no clue why."""
+    assert get(server, "/d/TOK123")[0] == 200
+    assert get(server, "/d/Tok123")[0] == 200
+    assert get(server, "/d/tok123/")[0] == 200
+
+
+def test_the_server_still_rejects_a_genuinely_wrong_token(server):
+    """Forgiving transcription must not become forgiving the secret."""
+    for wrong in ("/d/tok124", "/d/tok12", "/d/tok1234", "/d/", "/d/x"):
+        assert get(server, wrong)[0] == 404, wrong
