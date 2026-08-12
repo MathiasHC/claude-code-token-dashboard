@@ -12,6 +12,14 @@ from . import ranges
 from .models import Bar, DashboardData
 
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
+#: Hard cap on how much of a session title reaches the markup. This is a
+#: payload guard, not a display cap — the browser decides what is visible.
+#: Real titles are whole prompts: measured at 265 to 4,646 characters, which
+#: is several KB of text per refresh that is never shown, and it carries the
+#: full prompt into the page source when the screen displays ~30 characters
+#: of it. 200 is far more than any column will ever render and small enough
+#: that the tail stops mattering.
+SESSION_TITLE_CAP = 200
 SOURCE_COLOURS = ("#3fb950", "#a371f7", "#58a6ff", "#d29922", "#8b949e")
 DAILY_CHART_HEIGHT_PX = 78
 
@@ -123,9 +131,12 @@ def _session_rows(bars: list[Bar]) -> str:
     for bar in bars:
         # Title first, amount right-aligned — the same shape as every other
         # breakdown panel, which reads label-then-money.
+        # Cut well beyond anything the column can show, so CSS still owns
+        # the visible truncation and stays responsive.
+        title = bar.label[:SESSION_TITLE_CAP]
         out.append(
             "<tr>"
-            f'<td class="stitle">{escape(bar.label)}</td>'
+            f'<td class="stitle">{escape(title)}</td>'
             f'<td class="amt">{_money(bar.cost)}</td>'
             "</tr>"
         )

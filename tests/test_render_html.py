@@ -521,16 +521,31 @@ def test_plan_label_is_html_escaped():
     assert "&lt;script&gt;" in out
 
 
-def test_long_session_titles_are_left_whole_for_css_to_truncate():
-    """The full title now reaches the markup; the browser clips it to the
-    column with text-overflow. A fixed character cap cut the same number of
-    letters whatever the column was worth, so it was wrong at every width
-    but the one it was tuned for."""
-    long_title = "x" * 200
-    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": long_title}, now=NOW)
+def test_titles_reach_the_markup_untouched_up_to_the_payload_cap():
+    """Display truncation is the browser's job, so nothing is cut at a width
+    the server cannot know."""
+    title = "x" * render_html.SESSION_TITLE_CAP
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": title}, now=NOW)
     out = render_html.render(data)
-    assert long_title in out, "the title should not be pre-truncated"
+    assert title in out
     assert "…" not in out, "the ellipsis is CSS, not a character in the text"
+
+
+def test_a_very_long_title_is_capped_before_it_reaches_the_page():
+    """Real titles are whole prompts — measured between 265 and 4,646
+    characters on live data. Without a cap that is several KB per refresh of
+    text nobody sees, and it puts the entire prompt in the page source when
+    the column shows about thirty characters of it."""
+    data = aggregate.build([rec("m1", "2026-07-30")], {"sess-a": "y" * 5000}, now=NOW)
+    out = render_html.render(data)
+    assert "y" * render_html.SESSION_TITLE_CAP in out
+    assert "y" * (render_html.SESSION_TITLE_CAP + 1) not in out
+
+
+def test_the_cap_is_far_wider_than_anything_the_column_renders():
+    """If the cap were near the visible width it would be a display cap
+    again, and would fight the CSS at wide viewports."""
+    assert render_html.SESSION_TITLE_CAP >= 150
 
 
 def test_the_session_table_can_actually_ellipsize():
