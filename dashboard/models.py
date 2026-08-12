@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+from .footprint import EMPTY_FOOTPRINT, Footprint
+
 
 class UsageRecord(NamedTuple):
     """One assistant message's token usage, normalised out of a transcript.
@@ -126,6 +128,9 @@ class RangeView:
     cache_read_tokens: int = 0
     avg_cost_per_message: float = 0.0
     avg_cost_per_session: float = 0.0
+    #: Modelled energy/water/carbon for the tokens in this range. Order of
+    #: magnitude only — see dashboard/footprint.py for why.
+    footprint: Footprint = EMPTY_FOOTPRINT
 
     @property
     def subagent_share(self) -> float:

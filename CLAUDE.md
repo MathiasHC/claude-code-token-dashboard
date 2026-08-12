@@ -56,6 +56,7 @@ dashboard/
   plans.py        which subscription to compare against
   ranges.py       every day window on the page, catalogue and comparisons
   freshness.py    how current the numbers are, and what to show when they aren't
+  footprint.py    modelled energy/water/carbon for a pile of tokens (pure)
   render_html.py  DashboardData -> one HTML document (pure)
   web.py          stdlib http.server, LAN-bound, token-gated
 tools/demo_page.py  render synthetic demo data (used for the README screenshot)
@@ -85,6 +86,10 @@ re-litigated are in `docs/adr/`.
   the panel to admit which window it is showing, which is how the bands ended
   up unlabelled and the DAILY heading ended up quoting a window it had not
   measured.
+- **The footprint estimate stays modest on purpose.** One significant
+  figure, an inline caveat, no model leaderboard, and none of the framings
+  `tests/test_footprint.py` forbids. It is good to an order of magnitude and
+  the page has to look like it knows that. See `docs/footprint.md`.
 - **Every day window comes from `ranges`.** Not just the five in the selector —
   yesterday, the prior 7 days and the same point last month are the same kind
   of question. Deciding what a malformed day means happens once, in

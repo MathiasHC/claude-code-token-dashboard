@@ -6,7 +6,7 @@ import calendar
 import datetime as dt
 from collections import Counter, defaultdict
 
-from . import plans, pricing, ranges
+from . import footprint, plans, pricing, ranges
 from .dates import instant
 from .models import Bar, DashboardData, DayCost, Plan, RangeView, UsageRecord, Window
 
@@ -195,6 +195,10 @@ def build(
     main_cost = subagent_cost = 0.0
     reads = 0
     cache_saved = 0.0
+    # Raw token counts inside the range, for the footprint estimate. Kept
+    # separate from the costed figures: the footprint weights token types by
+    # energy, which is a different ratio from what they are billed at.
+    tokens = dict.fromkeys(("output", "input", "cache_read", "cache_write"), 0)
     # All-time totals stay global no matter what range is selected: the
     # hero row is the fixed summary, and only the panels below it move.
     all_time_cost = 0.0
@@ -242,6 +246,10 @@ def build(
         else:
             main_cost += value
         reads += record.cache_read_tokens
+        tokens["output"] += record.output_tokens
+        tokens["input"] += record.input_tokens
+        tokens["cache_read"] += record.cache_read_tokens
+        tokens["cache_write"] += record.cache_write_5m + record.cache_write_1h
         # What those cache reads would have cost at full input rates. Cache
         # reads bill at CACHE_READ_MULTIPLIER of the input rate, so the part
         # never spent is the rest of it — already priced, in parts.cache_read,
@@ -287,6 +295,15 @@ def build(
         cache_read_tokens=reads,
         avg_cost_per_message=(grand_total / scoped_messages if scoped_messages else 0.0),
         avg_cost_per_session=(grand_total / len(by_session) if by_session else 0.0),
+        # Every token counts here, priced or not: an unpriced model still
+        # drew power. This is the one figure on the page that does not go to
+        # zero when a rate is missing.
+        footprint=footprint.estimate(
+            output_tokens=tokens["output"],
+            input_tokens=tokens["input"],
+            cache_read_tokens=tokens["cache_read"],
+            cache_write_tokens=tokens["cache_write"],
+        ),
     )
 
     return DashboardData(

@@ -83,6 +83,18 @@ number of bars in the daily chart. Distinct from the *width* of a window — a
 30-day range with three active days plots three bars, and saying "last 3 days"
 about it is wrong.
 
+## Footprint
+
+Modelled energy, water and carbon for the tokens in a range —
+`footprint.Footprint`, reached as `RangeView.footprint`. The one figure on the
+page that is not derived from money, and the only one that is non-zero for an
+unpriced model: a model nobody has a rate for still drew power.
+
+Energy is the single estimated quantity; water and carbon are fixed ratios of
+it, so the three displayed figures cannot contradict each other. Good to about
+an order of magnitude, which is why the page shows one significant figure and
+carries its caveat inline. See [docs/footprint.md](docs/footprint.md).
+
 ## Freshness
 
 How current the numbers on screen are. `freshness.Freshness` owns the whole

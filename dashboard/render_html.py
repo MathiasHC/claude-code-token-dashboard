@@ -348,6 +348,66 @@ def _plan_comparison(data: DashboardData) -> str:
     )
 
 
+def _one_sig_fig(value: float, unit: str, small_unit: str, factor: float) -> str:
+    """A quantity at one significant figure, in whichever unit reads better.
+
+    One figure is not a stylistic choice. The underlying model is good to
+    about an order of magnitude, and a second digit would be inventing
+    precision that no published source supports.
+    """
+    if value <= 0:
+        return f"0 {unit}"
+    if value < 1:
+        value, unit = value * factor, small_unit
+    if value >= 100:
+        return f"{value:,.0f} {unit}"
+    digits = 0 if value >= 10 else 1
+    return f"{value:.{digits}f} {unit}"
+
+
+def _kettles(boils: float) -> str:
+    """The equivalence, at the same one significant figure as everything else
+    beside it. "212 kettles" would be three, and would quietly claim the
+    model is a hundred times more precise than it is."""
+    if boils < 1:
+        return "half a kettle boiled" if boils >= 0.25 else "less than a kettle boiled"
+    if boils < 10:
+        rounded = round(boils)
+    else:
+        magnitude = 10 ** (len(str(int(boils))) - 1)
+        rounded = round(boils / magnitude) * magnitude
+    return f"{rounded:,} kettle{'' if rounded == 1 else 's'} boiled"
+
+
+def _footprint_note(view: RangeView) -> str:
+    """The modelled environmental cost of the tokens in this range.
+
+    Two lines, deliberately: the figures, then what they are worth. The
+    caveat is inline rather than behind a link because there is no tooltip on
+    the browser this targets, and a number this uncertain shown bare would be
+    a worse lie than showing nothing.
+
+    Framings this is not allowed to use, because the evidence does not
+    support them: bottles of water, flights, trees, offsets, comparisons
+    between models, or anything with two significant figures.
+    """
+    fp = view.footprint
+    if not fp:
+        return ""
+    figures = " &middot; ".join(
+        (
+            _one_sig_fig(fp.kwh, "kWh", "Wh", 1000),
+            _one_sig_fig(fp.litres, "L water", "mL water", 1000),
+            _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000),
+        )
+    )
+    return (
+        f'<div class="note">{figures} &middot; about {_kettles(fp.kettle_boils)}</div>'
+        '<div class="note">modelled from published research, not measured '
+        "&middot; order of magnitude only &middot; excludes training</div>"
+    )
+
+
 def _cache_note(view: RangeView) -> str:
     """What caching bought, rather than how often it hit.
 
@@ -450,7 +510,7 @@ def render(
 <table class="grid"><tbody>
 <tr>
 <td><h2>WHERE THE MONEY GOES &middot; {escape(view.label)}</h2>{_rows(view.money)}
-<div class="note">{_cache_note(view)}</div></td>
+<div class="note">{_cache_note(view)}</div>{_footprint_note(view)}</td>
 <td><h2>BY MODEL &middot; {escape(view.label)}</h2>{_rows(view.by_model)}
 <div class="note">avg {_money(view.avg_cost_per_message)}/msg &middot;
 {_money(view.avg_cost_per_session)}/session</div>{unpriced}</td>

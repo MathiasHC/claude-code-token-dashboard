@@ -41,6 +41,10 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
+- **A rough environmental estimate** — modelled kWh, litres of water and
+  kg CO2e for the tokens in view, plus how many kettles that would boil. It
+  is good to about an order of magnitude and says so on the page; the method
+  and every source are in [docs/footprint.md](docs/footprint.md).
 - **A daily chart** — the last 30 active days across the full width, with
   today picked out and a value axis that snaps to round money: the $151 peak
   above draws lines at $80 and $160, so the bars are readable as amounts
@@ -108,7 +112,7 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **742px tall**, so all of
+The page is laid out for a width of **1024** and is **733px tall**, so all of
 it fits a 1024×768 screen without scrolling. Measured in a 1024-wide frame,
 not estimated — it was 875px before the panels were rearranged into full
 rows.
