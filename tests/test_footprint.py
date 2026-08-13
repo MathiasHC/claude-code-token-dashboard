@@ -8,6 +8,7 @@ the page presents it as if it were measured.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 import pytest
 
@@ -106,14 +107,24 @@ def test_an_unpriced_model_still_has_a_footprint():
     assert data.scoped.footprint.kwh > 0
 
 
+def _strip_values(out: str) -> list[str]:
+    """The four values in the footprint strip, without their icons."""
+    return [
+        v.strip()
+        for v in re.findall(r'<td class="fpitem">.*?</svg>([^<]*)</td>', out, re.S)
+    ]
+
+
 def test_the_page_never_shows_more_than_one_significant_figure():
     records = [rec(f"m{i}", output_tokens=1_234_567, cache_read_tokens=7_654_321)
                for i in range(3)]
     out = render_html.render(aggregate.build(records, {}, now=NOW))
-    line = next(ln for ln in out.splitlines() if "kettle" in ln)
-    for number in ("kWh", "L water", "kg CO2e"):
-        shown = line.split(number)[0].split("&middot;")[-1].strip()
-        assert "." not in shown or len(shown.split(".")[1]) <= 1, f"{shown} {number}"
+    values = _strip_values(out)
+    assert len(values) == 4, values
+    for shown in values:
+        digits = re.match(r"[\d,]+(?:\.(\d+))?", shown)
+        assert digits, shown
+        assert len(digits.group(1) or "") <= 1, f"too precise: {shown}"
 
 
 @pytest.mark.parametrize(
@@ -154,6 +165,60 @@ def test_the_page_refuses_the_indefensible_framings(framing):
     records = [rec("m1", output_tokens=5_000_000, cache_read_tokens=50_000_000)]
     out = render_html.render(aggregate.build(records, {}, now=NOW))
     assert framing not in out.lower()
+
+
+# --- the illustrated strip ----------------------------------------------
+
+def test_all_four_quantities_get_a_drawing():
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert out.count('<td class="fpitem">') == 4
+    assert out.count('class="fpicon"') == 4
+
+
+def test_the_animation_degrades_to_a_static_drawing():
+    """Every frame past the first is hidden by default and revealed only by
+    the animation. A browser that cannot animate — which is the whole reason
+    this is opacity frames rather than transforms or SMIL — shows frame one
+    and nothing else, which is a complete line drawing on its own."""
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert ".fpf { opacity:0; }" in out
+    assert ".fpf1 { opacity:1;" in out
+
+
+def test_the_animation_is_css_only_and_prefixed_for_the_target_browser():
+    """No JavaScript and no SMIL: the page's whole compatibility story is
+    that it carries no script at all, and an <animate> element would be a
+    second animation mechanism with worse support than the CSS one."""
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert "<animate" not in out
+    assert "<script" not in out.lower()
+    assert "@-webkit-keyframes fpcycle" in out
+    assert "@keyframes fpcycle" in out
+    assert "-webkit-animation:fpcycle" in out
+
+
+def test_motion_can_be_turned_off_by_the_reader():
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert "@media (prefers-reduced-motion: reduce)" in out
+
+
+def test_the_drawings_carry_no_text_for_a_screen_reader_to_announce():
+    """They repeat the number beside them; announcing them twice is noise."""
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert out.count('aria-hidden="true"') >= 4
+
+
+def test_the_strip_sits_after_the_daily_chart():
+    """Bottom right of the page, below everything else — it is decoration
+    with a number attached, not a panel."""
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert out.index("DAILY &middot;") < out.index('class="fpstrip"')
 
 
 def test_nothing_is_rendered_when_there_are_no_tokens():

@@ -91,6 +91,36 @@ table.daily { position:relative; z-index:1; }
 .col.today { background:#58a6ff; }
 .titlebar .live { float:right; letter-spacing:0; margin-right:14px; color:#e6edf3; }
 .dscale { font-size:10px; color:#8b949e; }
+
+/* The footprint strip. Four line drawings across the bottom right, each
+   animated by cross-fading a few hand-drawn frames — a flipbook.
+
+   Deliberately opacity-only. CSS transforms on SVG children are unreliable
+   on the browser this page targets, and SMIL is worse; opacity is the one
+   property every animating browser since about 2010 agrees on. If the
+   animation does not run at all, every frame after the first stays hidden
+   and you are left with a static line drawing, which is a perfectly good
+   outcome and the reason this approach was chosen over a GIF. */
+table.fpstrip { width:100%; border-collapse:collapse; margin-top:6px; }
+.fpnote { font-size:10px; color:#6e7681; text-align:left; vertical-align:middle; }
+.fpitem { font-size:11px; color:#8b949e; text-align:right; vertical-align:middle;
+          white-space:nowrap; padding-left:14px; }
+.fpicon { vertical-align:middle; margin-right:4px; }
+.fpf { opacity:0; }
+.fpf1 { opacity:1; -webkit-animation:fpcycle 1.5s steps(1,end) infinite;
+        animation:fpcycle 1.5s steps(1,end) infinite; }
+.fpf2 { -webkit-animation:fpcycle 1.5s steps(1,end) -1.0s infinite;
+        animation:fpcycle 1.5s steps(1,end) -1.0s infinite; }
+.fpf3 { -webkit-animation:fpcycle 1.5s steps(1,end) -0.5s infinite;
+        animation:fpcycle 1.5s steps(1,end) -0.5s infinite; }
+@-webkit-keyframes fpcycle { 0% { opacity:1 } 33% { opacity:1 }
+                             34% { opacity:0 } 100% { opacity:0 } }
+@keyframes fpcycle { 0% { opacity:1 } 33% { opacity:1 }
+                     34% { opacity:0 } 100% { opacity:0 } }
+@media (prefers-reduced-motion: reduce) {
+  .fpf1, .fpf2, .fpf3 { -webkit-animation:none; animation:none; }
+  .fpf1 { opacity:1 } .fpf2, .fpf3 { opacity:0 }
+}
 """.strip()
 
 
@@ -365,6 +395,89 @@ def _one_sig_fig(value: float, unit: str, small_unit: str, factor: float) -> str
     return f"{value:.{digits}f} {unit}"
 
 
+#: Four line drawings for the footprint strip. Each is a fixed outline plus
+#: three frames of the one moving part, cross-faded by the .fpf* classes.
+#: Drawn on a 24x24 grid, stroked not filled, so they stay legible at 22px on
+#: a screen being read from across a room.
+_ICONS = {
+    # Cooling towers under a flickering bolt. The blank third frame is what
+    # makes it read as electrical rather than as something merely pulsing.
+    "energy": (
+        "#d29922",
+        '<path d="M3 21h18M5 21l1.2-8h3.6L11 21M13.5 21l.9-6h2.7l.9 6"/>'
+        '<path d="M6.4 13c.6-1 2.4-1 3 0M14.4 15c.5-.8 1.9-.8 2.4 0"/>',
+        (
+            '<path d="M19 2l-2.6 4.4h2.4L16.4 11"/>',
+            '<path d="M19.4 2.4l-2.2 4h2.1l-2.2 3.8"/>',
+            "",
+        ),
+    ),
+    # A rock ledge, water going over its edge, a pool taking it. The falling
+    # sheet is three sets of dashes stepped downward, which reads as flow
+    # without needing a transform.
+    "water": (
+        "#58a6ff",
+        '<path d="M2 6.4h9.6M2 9h8.4M2 6.4v3.4"/>'
+        '<path d="M2 19.4c1.6-1.5 3.2 1.5 4.8 0s3.2 1.5 4.8 0 3.2 1.5 4.8 0'
+        "s3.2 1.5 4.8 0\"/>"
+        '<path d="M2 21.8c1.6-1.5 3.2 1.5 4.8 0s3.2 1.5 4.8 0 3.2 1.5 4.8 0'
+        "s3.2 1.5 4.8 0\"/>",
+        (
+            '<path d="M13 6.6v3.4M16.4 6.6v2.6M19.8 6.6v3.8'
+            'M13 11.8v3.4M16.4 11v3.4M19.8 12.2v3.4"/>',
+            '<path d="M13 7.8v3.4M16.4 7.5v2.6M19.8 7.9v3.8'
+            'M13 13v3.4M16.4 11.9v3.4M19.8 13.4v3.4"/>',
+            '<path d="M13 9v3.4M16.4 8.4v2.6M19.8 9.2v3.8'
+            'M13 14.2v3.4M16.4 12.8v3.4M19.8 14.6v3.4"/>',
+        ),
+    ),
+    # A cow, side on, emitting. Methane from livestock is a real line in
+    # carbon accounting, so the joke is at least on topic. The spot on the
+    # flank is doing most of the work of saying "cow" at 22 pixels.
+    "carbon": (
+        "#8b949e",
+        '<path d="M6.6 12.4h7.8a2.6 2.6 0 0 1 2.6 2.6v2.4H6.6z"/>'
+        '<path d="M17 14l2.6-1.1a1.1 1.1 0 0 1 1.5 1v2a1.1 1.1 0 0 1-1.5 1'
+        'L17 15.9M19.1 12.6l.5-1.6M20.9 12.2l1-1.2"/>'
+        '<path d="M8.2 17.4v3.2M11 17.4v3.2M13.6 17.4v3.2M16 17.4v3.2"/>'
+        '<path d="M6.6 12.8c-1.4.3-2.1 1.6-1.8 2.9"/>'
+        '<path d="M9.6 14a1.1 1.1 0 1 0 .1 0"/>',
+        (
+            '<path d="M3.6 16.4a1 1 0 1 0 .1 0"/>',
+            '<path d="M2.8 15.2a1.6 1.6 0 1 0 .1 0"/>',
+            '<path d="M2 13.8a2.2 2.2 0 1 0 .1 0"/>',
+        ),
+    ),
+    # A kettle with steam climbing off the spout.
+    "kettle": (
+        "#3fb950",
+        '<path d="M6.4 12.6h9.2v5.2a2 2 0 0 1-2 2H8.4a2 2 0 0 1-2-2z"/>'
+        '<path d="M8.6 12.6a2.6 2.6 0 0 1 4.8 0M15.6 14.2l2.8-1.8"/>',
+        (
+            '<path d="M18.6 11c.9-.6.1-1.4 1-2"/>',
+            '<path d="M18.6 10c.9-.6.1-1.4 1-2M17 11.4c.7-.5.1-1.1.8-1.6"/>',
+            '<path d="M18.6 9c.9-.6.1-1.4 1-2M17 10.4c.7-.5.1-1.1.8-1.6"/>',
+        ),
+    ),
+}
+
+
+def _icon(kind: str) -> str:
+    colour, outline, frames = _ICONS[kind]
+    animated = "".join(
+        f'<g class="fpf fpf{index}">{frame}</g>'
+        for index, frame in enumerate(frames, start=1)
+        if frame
+    )
+    return (
+        '<svg class="fpicon" width="22" height="22" viewBox="0 0 24 24" '
+        f'fill="none" stroke="{colour}" stroke-width="1.4" '
+        'stroke-linecap="round" stroke-linejoin="round" '
+        'aria-hidden="true">'
+        f"{outline}{animated}</svg>"
+    )
+
+
 def _kettles(boils: float) -> str:
     """The equivalence, at the same one significant figure as everything else
     beside it. "212 kettles" would be three, and would quietly claim the
@@ -394,17 +507,21 @@ def _footprint_note(view: RangeView) -> str:
     fp = view.footprint
     if not fp:
         return ""
-    figures = " &middot; ".join(
-        (
-            _one_sig_fig(fp.kwh, "kWh", "Wh", 1000),
-            _one_sig_fig(fp.litres, "L water", "mL water", 1000),
-            _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000),
-        )
+    boils = fp.kettle_boils
+    items = (
+        ("energy", _one_sig_fig(fp.kwh, "kWh", "Wh", 1000)),
+        ("water", _one_sig_fig(fp.litres, "L", "mL", 1000)),
+        ("carbon", _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000)),
+        ("kettle", _kettles(boils).replace(" boiled", "")),
+    )
+    cells = "".join(
+        f'<td class="fpitem">{_icon(kind)}{value}</td>' for kind, value in items
     )
     return (
-        f'<div class="note">{figures} &middot; about {_kettles(fp.kettle_boils)}</div>'
-        '<div class="note">modelled from published research, not measured '
-        "&middot; order of magnitude only &middot; excludes training</div>"
+        '<table class="fpstrip"><tbody><tr>'
+        '<td class="fpnote">modelled from published research, not measured '
+        "&middot; order of magnitude only &middot; excludes training</td>"
+        f"{cells}</tr></tbody></table>"
     )
 
 
@@ -510,7 +627,7 @@ def render(
 <table class="grid"><tbody>
 <tr>
 <td><h2>WHERE THE MONEY GOES &middot; {escape(view.label)}</h2>{_rows(view.money)}
-<div class="note">{_cache_note(view)}</div>{_footprint_note(view)}</td>
+<div class="note">{_cache_note(view)}</div></td>
 <td><h2>BY MODEL &middot; {escape(view.label)}</h2>{_rows(view.by_model)}
 <div class="note">avg {_money(view.avg_cost_per_message)}/msg &middot;
 {_money(view.avg_cost_per_session)}/session</div>{unpriced}</td>
@@ -526,5 +643,6 @@ def render(
 <table class="grid"><tbody>
 <tr><td><h2>{_daily_heading(view)}</h2>{_daily(view, data.today_day)}</td></tr>
 </tbody></table>
+{_footprint_note(view)}
 </body></html>
 """
