@@ -107,8 +107,11 @@ table.fpstrip { width:100%; table-layout:fixed; border-collapse:separate;
                 border-spacing:5px; margin-top:1px; }
 td.fpcard { background:#161b22; border:1px solid #30363d; padding:7px 4px 6px 4px;
             text-align:center; vertical-align:top; }
-.fpvalue { font-size:16px; color:#e6edf3; margin-top:2px; white-space:nowrap; }
-.fplabel { font-size:10px; letter-spacing:1.5px; color:#8b949e; margin-top:1px; }
+/* Letter-spacing follows the uppercase category, not the figure — spaced
+   digits read as a serial number rather than as a quantity. */
+.fpvalue { font-size:16px; letter-spacing:1.5px; color:#e6edf3; margin-top:3px;
+           white-space:nowrap; }
+.fplabel { font-size:11px; color:#8b949e; margin-top:1px; white-space:nowrap; }
 .fpnote { font-size:10px; color:#6e7681; text-align:center; margin-top:3px; }
 .fpicon { display:block; margin:0 auto; }
 .fpf { opacity:0; }
@@ -536,10 +539,13 @@ def _footprint_note(view: RangeView) -> str:
         ("carbon", _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000), "CARBON"),
         ("kettle", _kettles(boils).replace(" boiled", ""), "SAME AS BOILING"),
     )
+    # The category leads and the figure sits under it in small type. That
+    # ordering suits a number with an order-of-magnitude error bar: the card
+    # says what is being counted first, and how much second.
     cells = "".join(
         f'<td class="fpcard">{_icon(kind)}'
-        f'<div class="fpvalue">{value}</div>'
-        f'<div class="fplabel">{label}</div></td>'
+        f'<div class="fpvalue">{label}</div>'
+        f'<div class="fplabel">{value}</div></td>'
         for kind, value, label in items
     )
     return (

@@ -117,7 +117,7 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **840px tall**, measured
+The page is laid out for a width of **1024** and is **841px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
 the daily chart fits a 1024×768 screen; the four footprint cards at the
 bottom sit just below the fold and need a short scroll. That was a deliberate

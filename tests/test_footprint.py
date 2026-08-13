@@ -108,8 +108,9 @@ def test_an_unpriced_model_still_has_a_footprint():
 
 
 def _strip_values(out: str) -> list[str]:
-    """The four values in the footprint strip, without their icons."""
-    return [v.strip() for v in re.findall(r'<div class="fpvalue">([^<]*)</div>', out)]
+    """The four figures. They live in .fplabel — the card leads with the
+    category in .fpvalue and puts the number under it."""
+    return [v.strip() for v in re.findall(r'<div class="fplabel">([^<]*)</div>', out)]
 
 
 def test_the_page_never_shows_more_than_one_significant_figure():
@@ -175,6 +176,17 @@ def test_each_card_is_a_quarter_of_the_width():
     assert out.count('<td class="fpcard">') == 4
 
 
+def test_the_card_leads_with_the_category_not_the_number():
+    """Category first, figure under it. The number carries an
+    order-of-magnitude error bar, so the card says what is being counted
+    before it says how much."""
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    card = re.search(r'<td class="fpcard">.*?</td>', out, re.S).group(0)
+    assert card.index('class="fpvalue"') < card.index('class="fplabel"')
+    assert "ELECTRICITY" in card
+
+
 def test_the_drawings_are_big_enough_to_read():
     """22px was a smudge beside a number. These are pictures."""
     assert render_html.ICON_PX >= 40
@@ -186,6 +198,7 @@ def test_all_four_quantities_get_a_drawing():
     assert out.count('<td class="fpcard">') == 4
     assert out.count('class="fpicon"') == 4
     assert out.count('<div class="fplabel">') == 4
+    assert out.count('<div class="fpvalue">') == 4
 
 
 def test_the_animation_degrades_to_a_static_drawing():
