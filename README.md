@@ -41,6 +41,15 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
+- **A rough environmental estimate** — modelled kWh, litres of water and
+  kg CO2e for the tokens in view, plus how many kettles that would boil,
+  along the bottom. Each has a small animated line drawing: a power station
+  under a flickering bolt, a waterfall, a cow with a methane problem, and a
+  kettle coming to the boil. The animation is CSS keyframes cross-fading
+  hand-drawn frames — no JavaScript, and it degrades to a static drawing on
+  anything that will not animate. The estimate is good to about an order of
+  magnitude and says so on the page; method and sources in
+  [docs/footprint.md](docs/footprint.md).
 - **A daily chart** — the last 30 active days across the full width, with
   today picked out and a value axis that snaps to round money: the $151 peak
   above draws lines at $80 and $160, so the bars are readable as amounts
@@ -108,10 +117,14 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **742px tall**, so all of
-it fits a 1024×768 screen without scrolling. Measured in a 1024-wide frame,
-not estimated — it was 875px before the panels were rearranged into full
-rows.
+The page is laid out for a width of **1024** and is **843px tall**, measured
+in a 1024-wide frame rather than estimated. Everything down to and including
+the daily chart fits a 1024×768 screen; the four footprint cards at the
+bottom sit just below the fold and need a short scroll. That was a deliberate
+trade — the drawings are only worth having if they are big enough to read,
+and at 34px they were not. Drop `ICON_PX` in `render_html.py` and remove the
+card labels if you would rather have the fold back; that measures 815px, so
+it does not buy the fold either.
 
 ### 2. A Raspberry Pi driving a small screen
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from dashboard import aggregate, render_html
+from dashboard.footprint import Footprint
 from dashboard.models import (
     Bar,
     DashboardData,
@@ -450,6 +451,7 @@ def _golden_data() -> DashboardData:
             subagent_cost=434.56,
             avg_cost_per_message=2.05,
             avg_cost_per_session=41.15,
+            footprint=Footprint(kwh=2.4, litres=8.7, g_co2e=884.0),
         ),
     )
 

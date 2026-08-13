@@ -91,6 +91,46 @@ table.daily { position:relative; z-index:1; }
 .col.today { background:#58a6ff; }
 .titlebar .live { float:right; letter-spacing:0; margin-right:14px; color:#e6edf3; }
 .dscale { font-size:10px; color:#8b949e; }
+
+/* The footprint strip. Four line drawings across the bottom right, each
+   animated by cross-fading a few hand-drawn frames — a flipbook.
+
+   Deliberately opacity-only. CSS transforms on SVG children are unreliable
+   on the browser this page targets, and SMIL is worse; opacity is the one
+   property every animating browser since about 2010 agrees on. If the
+   animation does not run at all, every frame after the first stays hidden
+   and you are left with a static line drawing, which is a perfectly good
+   outcome and the reason this approach was chosen over a GIF. */
+/* Four equal cards, matching the panel chrome above them so the row reads
+   as part of the page rather than as a badge strip bolted on. */
+table.fpstrip { width:100%; table-layout:fixed; border-collapse:separate;
+                border-spacing:5px; margin-top:1px; }
+td.fpcard { background:#161b22; border:1px solid #30363d; padding:7px 4px 6px 4px;
+            text-align:center; vertical-align:top; }
+/* The category leads at 12px and the figure sits under it at 16px, so the
+   card reads heading-then-number while the number stays the bigger thing.
+   Letter-spacing follows the uppercase category, not the figure — spaced
+   digits read as a serial number rather than as a quantity. */
+.fpvalue { font-size:12px; letter-spacing:1.5px; color:#8b949e; margin-top:3px;
+           white-space:nowrap; }
+.fplabel { font-size:16px; color:#e6edf3; margin-top:1px; white-space:nowrap; }
+.fpnote { font-size:10px; color:#6e7681; text-align:center; margin-top:3px; }
+.fpicon { display:block; margin:0 auto; }
+.fpf { opacity:0; }
+.fpf1 { opacity:1; -webkit-animation:fpcycle 1.5s steps(1,end) infinite;
+        animation:fpcycle 1.5s steps(1,end) infinite; }
+.fpf2 { -webkit-animation:fpcycle 1.5s steps(1,end) -1.0s infinite;
+        animation:fpcycle 1.5s steps(1,end) -1.0s infinite; }
+.fpf3 { -webkit-animation:fpcycle 1.5s steps(1,end) -0.5s infinite;
+        animation:fpcycle 1.5s steps(1,end) -0.5s infinite; }
+@-webkit-keyframes fpcycle { 0% { opacity:1 } 33% { opacity:1 }
+                             34% { opacity:0 } 100% { opacity:0 } }
+@keyframes fpcycle { 0% { opacity:1 } 33% { opacity:1 }
+                     34% { opacity:0 } 100% { opacity:0 } }
+@media (prefers-reduced-motion: reduce) {
+  .fpf1, .fpf2, .fpf3 { -webkit-animation:none; animation:none; }
+  .fpf1 { opacity:1 } .fpf2, .fpf3 { opacity:0 }
+}
 """.strip()
 
 
@@ -348,6 +388,175 @@ def _plan_comparison(data: DashboardData) -> str:
     )
 
 
+def _one_sig_fig(value: float, unit: str, small_unit: str, factor: float) -> str:
+    """A quantity at one significant figure, in whichever unit reads better.
+
+    One figure is not a stylistic choice. The underlying model is good to
+    about an order of magnitude, and a second digit would be inventing
+    precision that no published source supports.
+    """
+    if value <= 0:
+        return f"0 {unit}"
+    if value < 1:
+        value, unit = value * factor, small_unit
+    if value >= 100:
+        return f"{value:,.0f} {unit}"
+    digits = 0 if value >= 10 else 1
+    return f"{value:.{digits}f} {unit}"
+
+
+#: Four line drawings for the footprint strip. Each is a fixed outline plus
+#: three frames of the one moving part, cross-faded by the .fpf* classes.
+#: Drawn on a 24x24 grid, stroked not filled, so they stay legible at 22px on
+#: a screen being read from across a room.
+_ICONS = {
+    # Cooling towers under a flickering bolt. The blank third frame is what
+    # makes it read as electrical rather than as something merely pulsing.
+    "energy": (
+        "#d29922",
+        '<path d="M3 21h18M5 21l1.2-8h3.6L11 21M13.5 21l.9-6h2.7l.9 6"/>'
+        '<path d="M6.4 13c.6-1 2.4-1 3 0M14.4 15c.5-.8 1.9-.8 2.4 0"/>',
+        (
+            '<path d="M19 2l-2.6 4.4h2.4L16.4 11"/>',
+            '<path d="M19.4 2.4l-2.2 4h2.1l-2.2 3.8"/>',
+            "",
+        ),
+    ),
+    # A tap, running. Two streams wave in opposite phase and the whole pair
+    # steps down a third of a wavelength per frame, which reads as flow
+    # without needing a transform. The frames start progressively lower, so
+    # the gap that opens under the spout reads as the stream breaking up.
+    "water": (
+        "#58a6ff",
+        '<path d="M2.4 4.6v6.6"/>'
+        '<path d="M2.4 7.4h9v3.6"/>'
+        '<path d="M9.9 11h3"/>'
+        '<path d="M6.2 7.4V5.2M4.4 5.2h3.6M6.2 5.2V4"/>',
+        (
+            '<path d="M10.7 10.4c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3'
+            'M12.1 10.4c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3"/>',
+            '<path d="M10.7 11.5c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3'
+            'M12.1 11.5c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3"/>',
+            '<path d="M10.7 12.6c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3'
+            'M12.1 12.6c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3"/>',
+        ),
+    ),
+    # A cow, side on, emitting. Methane from livestock is a real line in
+    # carbon accounting, so the joke is at least on topic. The spot on the
+    # flank is doing most of the work of saying "cow" at 22 pixels.
+    "carbon": (
+        "#8b949e",
+        # A cow's head, face on. The side view read as a hippo at this size —
+        # thin legs and a small head vanish, while ears, horns and a muzzle
+        # survive. The puff comes from the mouth rather than the other end
+        # because roughly 95% of cattle methane is belched, not farted, and
+        # the accurate version is no less funny.
+        '<path d="M6 9.8c0-2.1 2.2-3.5 5-3.5s5 1.4 5 3.5v2.3c0 2.7-2.2 4.7-5 4.7'
+        's-5-2-5-4.7z"/>'
+        '<path d="M6.2 9.4c-1.9-1.1-3.5-.9-3.9.2s.8 2.1 2.7 2.3"/>'
+        '<path d="M15.8 9.4c1.9-1.1 3.5-.9 3.9.2s-.8 2.1-2.7 2.3"/>'
+        '<path d="M7.7 6.9c-.7-1.3-.5-2.3.3-2.8M14.3 6.9c.7-1.3.5-2.3-.3-2.8"/>'
+        '<path d="M9.1 10.3a.5 .5 0 1 0 .1 0M12.9 10.3a.5 .5 0 1 0 .1 0"/>'
+        '<path d="M8.5 13.7c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1.1 1.8-2.5 1.8'
+        "-2.5-.8-2.5-1.8z\"/>"
+        '<path d="M10 13.9a.35 .35 0 1 0 .1 0M12 13.9a.35 .35 0 1 0 .1 0"/>',
+        (
+            '<path d="M15.6 17.6a.85 .85 0 1 0 .1 0"/>',
+            '<path d="M17.6 17.9a1.35 1.35 0 1 0 .1 0"/>',
+            '<path d="M19.9 17.5a1.95 1.95 0 1 0 .1 0"/>',
+        ),
+    ),
+    # A kettle with steam climbing off the spout.
+    "kettle": (
+        "#3fb950",
+        '<path d="M6.4 12.6h9.2v5.2a2 2 0 0 1-2 2H8.4a2 2 0 0 1-2-2z"/>'
+        '<path d="M8.6 12.6a2.6 2.6 0 0 1 4.8 0M15.6 14.2l2.8-1.8"/>',
+        (
+            '<path d="M18.6 11c.9-.6.1-1.4 1-2"/>',
+            '<path d="M18.6 10c.9-.6.1-1.4 1-2M17 11.4c.7-.5.1-1.1.8-1.6"/>',
+            '<path d="M18.6 9c.9-.6.1-1.4 1-2M17 10.4c.7-.5.1-1.1.8-1.6"/>',
+        ),
+    ),
+}
+
+
+#: Rendered size of a footprint drawing. Large enough to be readable as a
+#: picture from across a room rather than as a smudge next to a number —
+#: which is what 22px turned out to be.
+ICON_PX = 46
+
+
+def _icon(kind: str) -> str:
+    colour, outline, frames = _ICONS[kind]
+    animated = "".join(
+        f'<g class="fpf fpf{index}">{frame}</g>'
+        for index, frame in enumerate(frames, start=1)
+        if frame
+    )
+    # Stroke width is in user units, so it scales with the box. 1.15 at 46px
+    # renders about 2.2 device px — a drawn line rather than a slab.
+    return (
+        f'<svg class="fpicon" width="{ICON_PX}" height="{ICON_PX}" '
+        'viewBox="0 0 24 24" '
+        f'fill="none" stroke="{colour}" stroke-width="1.15" '
+        'stroke-linecap="round" stroke-linejoin="round" '
+        'aria-hidden="true">'
+        f"{outline}{animated}</svg>"
+    )
+
+
+def _kettles(boils: float) -> str:
+    """The equivalence, at the same one significant figure as everything else
+    beside it. "212 kettles" would be three, and would quietly claim the
+    model is a hundred times more precise than it is."""
+    if boils < 1:
+        return "half a kettle boiled" if boils >= 0.25 else "less than a kettle boiled"
+    if boils < 10:
+        rounded = round(boils)
+    else:
+        magnitude = 10 ** (len(str(int(boils))) - 1)
+        rounded = round(boils / magnitude) * magnitude
+    return f"{rounded:,} kettle{'' if rounded == 1 else 's'} boiled"
+
+
+def _footprint_note(view: RangeView) -> str:
+    """The modelled environmental cost of the tokens in this range.
+
+    Two lines, deliberately: the figures, then what they are worth. The
+    caveat is inline rather than behind a link because there is no tooltip on
+    the browser this targets, and a number this uncertain shown bare would be
+    a worse lie than showing nothing.
+
+    Framings this is not allowed to use, because the evidence does not
+    support them: bottles of water, flights, trees, offsets, comparisons
+    between models, or anything with two significant figures.
+    """
+    fp = view.footprint
+    if not fp:
+        return ""
+    boils = fp.kettle_boils
+    items = (
+        ("energy", _one_sig_fig(fp.kwh, "kWh", "Wh", 1000), "ELECTRICITY"),
+        ("water", _one_sig_fig(fp.litres, "L", "mL", 1000), "WATER"),
+        ("carbon", _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000), "CARBON"),
+        ("kettle", _kettles(boils).replace(" boiled", ""), "SAME AS BOILING"),
+    )
+    # The category leads and the figure sits under it in small type. That
+    # ordering suits a number with an order-of-magnitude error bar: the card
+    # says what is being counted first, and how much second.
+    cells = "".join(
+        f'<td class="fpcard">{_icon(kind)}'
+        f'<div class="fpvalue">{label}</div>'
+        f'<div class="fplabel">{value}</div></td>'
+        for kind, value, label in items
+    )
+    return (
+        f'<table class="fpstrip"><tbody><tr>{cells}</tr></tbody></table>'
+        '<div class="fpnote">modelled from published research, not measured '
+        "&middot; order of magnitude only &middot; excludes training</div>"
+    )
+
+
 def _cache_note(view: RangeView) -> str:
     """What caching bought, rather than how often it hit.
 
@@ -466,5 +675,6 @@ def render(
 <table class="grid"><tbody>
 <tr><td><h2>{_daily_heading(view)}</h2>{_daily(view, data.today_day)}</td></tr>
 </tbody></table>
+{_footprint_note(view)}
 </body></html>
 """
