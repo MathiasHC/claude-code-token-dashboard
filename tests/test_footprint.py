@@ -109,10 +109,7 @@ def test_an_unpriced_model_still_has_a_footprint():
 
 def _strip_values(out: str) -> list[str]:
     """The four values in the footprint strip, without their icons."""
-    return [
-        v.strip()
-        for v in re.findall(r'<td class="fpitem">.*?</svg>([^<]*)</td>', out, re.S)
-    ]
+    return [v.strip() for v in re.findall(r'<div class="fpvalue">([^<]*)</div>', out)]
 
 
 def test_the_page_never_shows_more_than_one_significant_figure():
@@ -169,11 +166,26 @@ def test_the_page_refuses_the_indefensible_framings(framing):
 
 # --- the illustrated strip ----------------------------------------------
 
+def test_each_card_is_a_quarter_of_the_width():
+    """Four equal cards, so the row reads as a set rather than as whichever
+    number happened to be longest."""
+    data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
+    out = render_html.render(data)
+    assert "table.fpstrip { width:100%; table-layout:fixed;" in out
+    assert out.count('<td class="fpcard">') == 4
+
+
+def test_the_drawings_are_big_enough_to_read():
+    """22px was a smudge beside a number. These are pictures."""
+    assert render_html.ICON_PX >= 40
+
+
 def test_all_four_quantities_get_a_drawing():
     data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
     out = render_html.render(data)
-    assert out.count('<td class="fpitem">') == 4
+    assert out.count('<td class="fpcard">') == 4
     assert out.count('class="fpicon"') == 4
+    assert out.count('<div class="fplabel">') == 4
 
 
 def test_the_animation_degrades_to_a_static_drawing():

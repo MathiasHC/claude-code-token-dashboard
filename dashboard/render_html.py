@@ -101,11 +101,16 @@ table.daily { position:relative; z-index:1; }
    animation does not run at all, every frame after the first stays hidden
    and you are left with a static line drawing, which is a perfectly good
    outcome and the reason this approach was chosen over a GIF. */
-table.fpstrip { width:100%; border-collapse:collapse; margin-top:6px; }
-.fpnote { font-size:10px; color:#6e7681; text-align:left; vertical-align:middle; }
-.fpitem { font-size:11px; color:#8b949e; text-align:right; vertical-align:middle;
-          white-space:nowrap; padding-left:14px; }
-.fpicon { vertical-align:middle; margin-right:4px; }
+/* Four equal cards, matching the panel chrome above them so the row reads
+   as part of the page rather than as a badge strip bolted on. */
+table.fpstrip { width:100%; table-layout:fixed; border-collapse:separate;
+                border-spacing:5px; margin-top:1px; }
+td.fpcard { background:#161b22; border:1px solid #30363d; padding:7px 4px 6px 4px;
+            text-align:center; vertical-align:top; }
+.fpvalue { font-size:16px; color:#e6edf3; margin-top:2px; white-space:nowrap; }
+.fplabel { font-size:10px; letter-spacing:1.5px; color:#8b949e; margin-top:1px; }
+.fpnote { font-size:10px; color:#6e7681; text-align:center; margin-top:3px; }
+.fpicon { display:block; margin:0 auto; }
 .fpf { opacity:0; }
 .fpf1 { opacity:1; -webkit-animation:fpcycle 1.5s steps(1,end) infinite;
         animation:fpcycle 1.5s steps(1,end) infinite; }
@@ -436,16 +441,24 @@ _ICONS = {
     # flank is doing most of the work of saying "cow" at 22 pixels.
     "carbon": (
         "#8b949e",
-        '<path d="M6.6 12.4h7.8a2.6 2.6 0 0 1 2.6 2.6v2.4H6.6z"/>'
-        '<path d="M17 14l2.6-1.1a1.1 1.1 0 0 1 1.5 1v2a1.1 1.1 0 0 1-1.5 1'
-        'L17 15.9M19.1 12.6l.5-1.6M20.9 12.2l1-1.2"/>'
-        '<path d="M8.2 17.4v3.2M11 17.4v3.2M13.6 17.4v3.2M16 17.4v3.2"/>'
-        '<path d="M6.6 12.8c-1.4.3-2.1 1.6-1.8 2.9"/>'
-        '<path d="M9.6 14a1.1 1.1 0 1 0 .1 0"/>',
+        # A cow's head, face on. The side view read as a hippo at this size —
+        # thin legs and a small head vanish, while ears, horns and a muzzle
+        # survive. The puff comes from the mouth rather than the other end
+        # because roughly 95% of cattle methane is belched, not farted, and
+        # the accurate version is no less funny.
+        '<path d="M6 9.8c0-2.1 2.2-3.5 5-3.5s5 1.4 5 3.5v2.3c0 2.7-2.2 4.7-5 4.7'
+        's-5-2-5-4.7z"/>'
+        '<path d="M6.2 9.4c-1.9-1.1-3.5-.9-3.9.2s.8 2.1 2.7 2.3"/>'
+        '<path d="M15.8 9.4c1.9-1.1 3.5-.9 3.9.2s-.8 2.1-2.7 2.3"/>'
+        '<path d="M7.7 6.9c-.7-1.3-.5-2.3.3-2.8M14.3 6.9c.7-1.3.5-2.3-.3-2.8"/>'
+        '<path d="M9.1 10.3a.5 .5 0 1 0 .1 0M12.9 10.3a.5 .5 0 1 0 .1 0"/>'
+        '<path d="M8.5 13.7c0-1 1.1-1.7 2.5-1.7s2.5.7 2.5 1.7-1.1 1.8-2.5 1.8'
+        "-2.5-.8-2.5-1.8z\"/>"
+        '<path d="M10 13.9a.35 .35 0 1 0 .1 0M12 13.9a.35 .35 0 1 0 .1 0"/>',
         (
-            '<path d="M3.6 16.4a1 1 0 1 0 .1 0"/>',
-            '<path d="M2.8 15.2a1.6 1.6 0 1 0 .1 0"/>',
-            '<path d="M2 13.8a2.2 2.2 0 1 0 .1 0"/>',
+            '<path d="M15.6 17.6a.85 .85 0 1 0 .1 0"/>',
+            '<path d="M17.6 17.9a1.35 1.35 0 1 0 .1 0"/>',
+            '<path d="M19.9 17.5a1.95 1.95 0 1 0 .1 0"/>',
         ),
     ),
     # A kettle with steam climbing off the spout.
@@ -462,6 +475,12 @@ _ICONS = {
 }
 
 
+#: Rendered size of a footprint drawing. Large enough to be readable as a
+#: picture from across a room rather than as a smudge next to a number —
+#: which is what 22px turned out to be.
+ICON_PX = 46
+
+
 def _icon(kind: str) -> str:
     colour, outline, frames = _ICONS[kind]
     animated = "".join(
@@ -469,9 +488,12 @@ def _icon(kind: str) -> str:
         for index, frame in enumerate(frames, start=1)
         if frame
     )
+    # Stroke width is in user units, so it scales with the box. 1.15 at 46px
+    # renders about 2.2 device px — a drawn line rather than a slab.
     return (
-        '<svg class="fpicon" width="22" height="22" viewBox="0 0 24 24" '
-        f'fill="none" stroke="{colour}" stroke-width="1.4" '
+        f'<svg class="fpicon" width="{ICON_PX}" height="{ICON_PX}" '
+        'viewBox="0 0 24 24" '
+        f'fill="none" stroke="{colour}" stroke-width="1.15" '
         'stroke-linecap="round" stroke-linejoin="round" '
         'aria-hidden="true">'
         f"{outline}{animated}</svg>"
@@ -509,19 +531,21 @@ def _footprint_note(view: RangeView) -> str:
         return ""
     boils = fp.kettle_boils
     items = (
-        ("energy", _one_sig_fig(fp.kwh, "kWh", "Wh", 1000)),
-        ("water", _one_sig_fig(fp.litres, "L", "mL", 1000)),
-        ("carbon", _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000)),
-        ("kettle", _kettles(boils).replace(" boiled", "")),
+        ("energy", _one_sig_fig(fp.kwh, "kWh", "Wh", 1000), "ELECTRICITY"),
+        ("water", _one_sig_fig(fp.litres, "L", "mL", 1000), "WATER"),
+        ("carbon", _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000), "CARBON"),
+        ("kettle", _kettles(boils).replace(" boiled", ""), "SAME AS BOILING"),
     )
     cells = "".join(
-        f'<td class="fpitem">{_icon(kind)}{value}</td>' for kind, value in items
+        f'<td class="fpcard">{_icon(kind)}'
+        f'<div class="fpvalue">{value}</div>'
+        f'<div class="fplabel">{label}</div></td>'
+        for kind, value, label in items
     )
     return (
-        '<table class="fpstrip"><tbody><tr>'
-        '<td class="fpnote">modelled from published research, not measured '
-        "&middot; order of magnitude only &middot; excludes training</td>"
-        f"{cells}</tr></tbody></table>"
+        f'<table class="fpstrip"><tbody><tr>{cells}</tr></tbody></table>'
+        '<div class="fpnote">modelled from published research, not measured '
+        "&middot; order of magnitude only &middot; excludes training</div>"
     )
 
 

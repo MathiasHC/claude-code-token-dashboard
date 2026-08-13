@@ -117,10 +117,14 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **748px tall**, so all of
-it fits a 1024×768 screen without scrolling. Measured in a 1024-wide frame,
-not estimated — it was 875px before the panels were rearranged into full
-rows.
+The page is laid out for a width of **1024** and is **840px tall**, measured
+in a 1024-wide frame rather than estimated. Everything down to and including
+the daily chart fits a 1024×768 screen; the four footprint cards at the
+bottom sit just below the fold and need a short scroll. That was a deliberate
+trade — the drawings are only worth having if they are big enough to read,
+and at 34px they were not. Drop `ICON_PX` in `render_html.py` and remove the
+card labels if you would rather have the fold back; that measures 815px, so
+it does not buy the fold either.
 
 ### 2. A Raspberry Pi driving a small screen
 
