@@ -422,23 +422,23 @@ _ICONS = {
             "",
         ),
     ),
-    # A rock ledge, water going over its edge, a pool taking it. The falling
-    # sheet is three sets of dashes stepped downward, which reads as flow
-    # without needing a transform.
+    # A tap, running. Two streams wave in opposite phase and the whole pair
+    # steps down a third of a wavelength per frame, which reads as flow
+    # without needing a transform. The frames start progressively lower, so
+    # the gap that opens under the spout reads as the stream breaking up.
     "water": (
         "#58a6ff",
-        '<path d="M2 6.4h9.6M2 9h8.4M2 6.4v3.4"/>'
-        '<path d="M2 19.4c1.6-1.5 3.2 1.5 4.8 0s3.2 1.5 4.8 0 3.2 1.5 4.8 0'
-        "s3.2 1.5 4.8 0\"/>"
-        '<path d="M2 21.8c1.6-1.5 3.2 1.5 4.8 0s3.2 1.5 4.8 0 3.2 1.5 4.8 0'
-        "s3.2 1.5 4.8 0\"/>",
+        '<path d="M2.4 4.6v6.6"/>'
+        '<path d="M2.4 7.4h9v3.6"/>'
+        '<path d="M9.9 11h3"/>'
+        '<path d="M6.2 7.4V5.2M4.4 5.2h3.6M6.2 5.2V4"/>',
         (
-            '<path d="M13 6.6v3.4M16.4 6.6v2.6M19.8 6.6v3.8'
-            'M13 11.8v3.4M16.4 11v3.4M19.8 12.2v3.4"/>',
-            '<path d="M13 7.8v3.4M16.4 7.5v2.6M19.8 7.9v3.8'
-            'M13 13v3.4M16.4 11.9v3.4M19.8 13.4v3.4"/>',
-            '<path d="M13 9v3.4M16.4 8.4v2.6M19.8 9.2v3.8'
-            'M13 14.2v3.4M16.4 12.8v3.4M19.8 14.6v3.4"/>',
+            '<path d="M10.7 10.4c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3'
+            'M12.1 10.4c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3"/>',
+            '<path d="M10.7 11.5c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3'
+            'M12.1 11.5c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3"/>',
+            '<path d="M10.7 12.6c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3'
+            'M12.1 12.6c-.5 1.1.5 2.2 0 3.3s.5 2.2 0 3.3s.5 2.2 0 3.3"/>',
         ),
     ),
     # A cow, side on, emitting. Methane from livestock is a real line in
