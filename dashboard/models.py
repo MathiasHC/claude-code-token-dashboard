@@ -45,6 +45,9 @@ class UsageRecord(NamedTuple):
     #: Seconds spent waiting for the person before this message: the gap
     #: ending at their turn. The other side of the same clock.
     wait_seconds: float = 0.0
+    #: Permission mode in force — auto, default, plan, acceptEdits. Tracked
+    #: as state by scan, since the message itself never carries it.
+    mode: str = "(not recorded)"
 
 
 class Plan(NamedTuple):
@@ -123,6 +126,7 @@ class RangeView:
     by_project: list[Bar] = field(default_factory=list)
     by_skill: list[Bar] = field(default_factory=list)
     by_source: list[Bar] = field(default_factory=list)
+    by_mode: list[Bar] = field(default_factory=list)
     top_sessions: list[Bar] = field(default_factory=list)
     daily: list[DayCost] = field(default_factory=list)
     main_cost: float = 0.0

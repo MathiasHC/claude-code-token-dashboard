@@ -21,6 +21,7 @@ BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
 #: that the tail stops mattering.
 SESSION_TITLE_CAP = 200
 SOURCE_COLOURS = ("#3fb950", "#a371f7", "#58a6ff", "#d29922", "#8b949e")
+MODE_COLOURS = ("#58a6ff", "#8b949e", "#d29922", "#3fb950", "#a371f7")
 DAILY_CHART_HEIGHT_PX = 78
 
 CSS = """
@@ -795,6 +796,7 @@ def render(
 <tr>
 <td><h2>BY PROJECT &middot; {escape(view.label)}</h2>{_rows(view.by_project)}</td>
 <td><h2>BY SKILL &middot; {escape(view.label)} &middot; ATTRIBUTED</h2>{_rows(view.by_skill)}</td>
+<td><h2>BY MODE &middot; {escape(view.label)}</h2>{_rows(view.by_mode)}</td>
 <td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
 </tr>
 </tbody></table>

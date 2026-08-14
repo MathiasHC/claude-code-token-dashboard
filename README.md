@@ -41,6 +41,10 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
+- **By permission mode** — how much ran on auto versus plan, accept-edits or
+  approve-each-action. Tracked as state through the transcript, since the
+  messages themselves do not carry it. Sessions that never recorded a mode
+  are shown as their own slice rather than folded into the majority.
 - **Where the clock went** — four cards: machine time (model generating plus
   tools running), how much of it was subagents in parallel, how long it spent
   waiting on you, and how many sessions that was spread over. Measured from

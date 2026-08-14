@@ -288,3 +288,86 @@ def test_no_panel_without_measured_time():
     would read as a measurement of nothing rather than an absence."""
     out = render_html.render(aggregate.build([rec("m1", 0)], {}, now=NOW))
     assert "AI WORKED" not in out
+
+
+# --- permission mode ----------------------------------------------------
+
+def mode_event(mode: str) -> dict:
+    """How a mode arrives: its own record, with no timestamp."""
+    return {"type": "permission-mode", "permissionMode": mode, "sessionId": "s1"}
+
+
+def modes_of(tmp_path, *entries) -> list[str]:
+    return [r.mode for r in scan.scan(transcript(tmp_path, *entries)).records]
+
+
+def test_a_mode_event_stamps_the_messages_that_follow_it(tmp_path):
+    assert modes_of(tmp_path, mode_event("plan"), human(0), assistant(10, "m1")) == ["plan"]
+
+
+def test_a_mode_change_applies_from_where_it_happens(tmp_path):
+    """Switching out of plan mid-session must not retroactively relabel the
+    planning that came before it."""
+    got = modes_of(
+        tmp_path,
+        mode_event("plan"), human(0), assistant(10, "m1"),
+        mode_event("auto"), assistant(20, "m2"),
+    )
+    assert got == ["plan", "auto"]
+
+
+def test_a_session_that_never_says_stays_unrecorded(tmp_path):
+    """37% of a real history. Assuming it into the majority would be a
+    fabrication, and the page shows the bucket rather than hiding it."""
+    assert modes_of(tmp_path, human(0), assistant(10, "m1")) == [scan.UNKNOWN_MODE]
+
+
+def test_the_mode_can_also_arrive_on_a_user_turn(tmp_path):
+    """Some user records carry permissionMode instead of a dedicated event."""
+    turn = dict(human(0))
+    turn["permissionMode"] = "acceptEdits"
+    assert modes_of(tmp_path, turn, assistant(10, "m1")) == ["acceptEdits"]
+
+
+def test_mode_does_not_leak_between_transcripts(tmp_path):
+    """Each file is one conversation; state must not carry across."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    import json as _json
+    (tmp_path / "a" / "s.jsonl").write_text(
+        "".join(_json.dumps(e) + "\n" for e in
+                (mode_event("plan"), human(0), assistant(10, "m1"))), encoding="utf-8")
+    (tmp_path / "b" / "s.jsonl").write_text(
+        "".join(_json.dumps(e) + "\n" for e in
+                (human(0), assistant(10, "m2"))), encoding="utf-8")
+    got = {r.message_id: r.mode for r in scan.scan(tmp_path).records}
+    assert got == {"m1": "plan", "m2": scan.UNKNOWN_MODE}
+
+
+def test_mode_survives_a_store_round_trip(tmp_path):
+    result = scan.scan(transcript(tmp_path, mode_event("auto"), human(0), assistant(10, "m1")))
+    with store.Store(tmp_path / "m.db") as db:
+        db.ingest(result)
+        assert [r.mode for r in db.records()] == ["auto"]
+
+
+def test_the_band_shows_every_mode_including_the_unrecorded_one():
+    """Filtering the unrecorded bucket would silently renormalise the rest
+    into looking like the whole picture."""
+    records = [rec("m1", 60, mode="auto"), rec("m2", 60, mode=scan.UNKNOWN_MODE)]
+    out = render_html.render(aggregate.build(records, {}, now=NOW))
+    assert "BY MODE &middot;" in out
+    assert scan.UNKNOWN_MODE in out
+    shares = aggregate.build(records, {}, now=NOW).scoped.by_mode
+    assert sum(b.share for b in shares) == pytest.approx(1.0)
+
+
+def test_default_mode_is_labelled_for_humans():
+    """Claude Code calls it "default"; people call it manual."""
+    out = render_html.render(aggregate.build([rec("m1", 60, mode="default")], {}, now=NOW))
+    assert "default (manual)" in out
+
+
+def test_an_unknown_mode_is_shown_rather_than_dropped():
+    out = render_html.render(aggregate.build([rec("m1", 60, mode="warp-speed")], {}, now=NOW))
+    assert "warp-speed" in out

@@ -47,6 +47,18 @@ MAX_WORK_GAP_SECONDS = 300.0
 #: and the seconds belong to neither side of the clock.
 MAX_WAIT_GAP_SECONDS = 900.0
 
+#: Assistant messages never carry the permission mode. It arrives as its own
+#: record — `{"type": "permission-mode", "permissionMode": ...}` — and on
+#: some user turns, with no timestamp on either. So it is tracked as state in
+#: file order and stamped onto the messages that follow.
+#:
+#: Measured on 663 real transcripts: where a session records a mode at all it
+#: does so before its first assistant message (median and max both zero), so
+#: nothing inside a covered session is misattributed. What is not covered is
+#: whole sessions that never record one — 37% of messages — and those stay
+#: UNKNOWN_MODE rather than being assumed into the majority.
+UNKNOWN_MODE = "(not recorded)"
+
 
 class FileState(NamedTuple):
     """What we knew about a transcript after the last pass.
@@ -240,6 +252,7 @@ def scan(
         pending_work = 0.0
         pending_wait = 0.0
         last_emitted = None
+        mode = UNKNOWN_MODE
         for raw in chunk[:end].split(b"\n"):
             if not raw.strip():
                 continue
@@ -254,6 +267,10 @@ def scan(
 
             session_id = entry.get("sessionId") or entry.get("session_id") or ""
             kind = entry.get("type")
+
+            declared = entry.get("permissionMode")
+            if declared:
+                mode = str(declared)
 
             # Machine time, accumulated across every record type. A gap that
             # ends at a human turn is the human thinking and is discarded;
@@ -318,6 +335,7 @@ def scan(
                     source=source,
                     work_seconds=pending_work,
                     wait_seconds=pending_wait,
+                    mode=mode,
                 )
             )
             last_emitted = len(records) - 1

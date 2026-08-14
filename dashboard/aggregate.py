@@ -54,6 +54,18 @@ SOURCE_LABELS = {
     "cowork": "Desktop (Cowork)",
 }
 
+#: Display names for UsageRecord.mode. "default" is what Claude Code calls
+#: the mode where every action is approved individually; "manual" is what
+#: people call it, so the page says both. An unrecognised mode is shown
+#: verbatim rather than dropped.
+MODE_LABELS = {
+    "auto": "auto",
+    "default": "default (manual)",
+    "plan": "plan",
+    "acceptEdits": "accept edits",
+    "bypassPermissions": "bypass permissions",
+}
+
 
 def _bars(totals: dict[str, float], grand_total: float, top_n: int | None) -> list[Bar]:
     ordered = sorted(totals.items(), key=lambda item: item[1], reverse=True)
@@ -188,6 +200,7 @@ def build(
     by_skill: dict[str, float] = defaultdict(float)
     by_session: dict[str, float] = defaultdict(float)
     by_source: dict[str, float] = defaultdict(float)
+    by_mode: dict[str, float] = defaultdict(float)
     per_day: dict[str, float] = defaultdict(float)
     # Global, not range-scoped: the plan band talks about this month
     # regardless of which range the panels below are showing.
@@ -240,6 +253,7 @@ def build(
             by_skill[record.skill] += value
         by_session[record.session_id] += value
         by_source[SOURCE_LABELS.get(record.source, record.source)] += value
+        by_mode[MODE_LABELS.get(record.mode, record.mode)] += value
         per_day[record.day] += value
 
         if record.is_subagent:
@@ -291,6 +305,10 @@ def build(
         # Every surface, not a top-N: a source that has been dropped off the
         # page is indistinguishable from one costing nothing.
         by_source=_bars(dict(by_source), grand_total, None),
+        # Every mode, not a top-N, and the unrecorded bucket stays in: at
+        # ~37% of messages it is real information about the history rather
+        # than noise, and dropping it would make the shares lie.
+        by_mode=_bars(dict(by_mode), grand_total, None),
         top_sessions=session_bars,
         daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
         main_cost=main_cost,

@@ -59,6 +59,14 @@ SKILLS = [
     ("code-review", 12),
     ("systematic-debugging", 9),
 ]
+MODES = (
+    ("auto", 78),
+    ("(not recorded)", 11),
+    ("default", 8),
+    ("plan", 2),
+    ("acceptEdits", 1),
+)
+
 SOURCES = [("code", 86), ("cowork", 14)]
 
 SESSION_TITLES = [
@@ -148,6 +156,7 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                     wait_seconds=(
                         rng.uniform(8.0, 240.0) if rng.random() < 0.12 else 0.0
                     ),
+                    mode=_weighted(rng, MODES),
                 )
             )
 

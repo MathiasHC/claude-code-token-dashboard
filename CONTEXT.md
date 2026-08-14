@@ -83,6 +83,23 @@ number of bars in the daily chart. Distinct from the *width* of a window — a
 30-day range with three active days plots three bars, and saying "last 3 days"
 about it is wrong.
 
+## Permission mode
+
+Which mode a message ran under — `auto`, `default` (approve each action),
+`plan`, `acceptEdits`, `bypassPermissions`. Shown as the BY MODE panel.
+
+Assistant messages never carry it. It arrives as its own record
+(`{"type": "permission-mode", "permissionMode": ...}`) and on some user
+turns, neither of which has a timestamp, so `scan` tracks it as state in
+file order and stamps the messages that follow. Measured across 663 real
+transcripts, a session that records a mode does so before its first
+assistant message, so nothing inside a covered session is misattributed.
+
+Sessions that never record one stay `scan.UNKNOWN_MODE` — about 37% of
+messages but only ~10% of spend, since they are mostly older and cheaper.
+That bucket is displayed rather than filtered: dropping it would
+renormalise the rest into looking like the whole picture.
+
 ## Machine time
 
 How long the model and its tools were actually working —
