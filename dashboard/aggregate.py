@@ -9,7 +9,16 @@ from collections import Counter, defaultdict
 from . import footprint, plans, pricing, ranges
 from . import dates
 from .dates import instant
-from .models import Bar, DashboardData, DayCost, Plan, RangeView, UsageRecord, Window
+from .models import (
+    Bar,
+    DashboardData,
+    DayCost,
+    Plan,
+    RangeView,
+    SkillRun,
+    UsageRecord,
+    Window,
+)
 
 UNTITLED = "(untitled session)"
 
@@ -158,6 +167,11 @@ def _on_pace(
     return month_to_date + (sum(window) / len(window)) * remaining
 
 
+def _when(ts: str) -> str:
+    moment = instant(ts)
+    return moment.astimezone().strftime("%d %b %H:%M") if moment is not None else ""
+
+
 def build(
     records: list[UsageRecord],
     titles: dict[str, str],
@@ -226,6 +240,8 @@ def build(
     by_branch: dict[str, float] = defaultdict(float)
     by_mcp: dict[str, float] = defaultdict(float)
     miss_by_reason: dict[str, int] = defaultdict(int)
+    by_origin: dict[str, float] = defaultdict(float)
+    runs: dict[str, dict] = {}
     missed_tokens = 0
     miss_cost = 0.0
     tool_use_messages = reply_messages = 0
@@ -287,6 +303,28 @@ def build(
         by_source[SOURCE_LABELS.get(record.source, record.source)] += value
         by_mode[MODE_LABELS.get(record.mode, record.mode)] += value
         by_effort[record.effort] += value
+        if record.skill_run:
+            by_origin[record.skill_origin or "(not recorded)"] += value
+            run = runs.get(record.skill_run)
+            if run is None:
+                runs[record.skill_run] = {
+                    "skill": record.skill,
+                    "origin": record.skill_origin or "(not recorded)",
+                    "cost": value,
+                    "seconds": record.work_seconds,
+                    # Kept as the raw string: transcript timestamps share one
+                    # zero-padded UTC format, so lexical order is chronological
+                    # and the run list can be sorted without parsing anything.
+                    # A run whose first message falls outside the range still
+                    # gets a start, which taking it from the run-start record
+                    # alone did not.
+                    "ts": record.ts,
+                }
+            else:
+                run["cost"] += value
+                run["seconds"] += record.work_seconds
+                if record.ts and record.ts < run["ts"]:
+                    run["ts"] = record.ts
         by_branch[record.branch] += value
         if record.mcp_server:
             by_mcp[record.mcp_server] += value
@@ -365,6 +403,20 @@ def build(
         by_effort=_bars(dict(by_effort), grand_total, None),
         by_branch=_bars(dict(by_branch), grand_total, TOP_N),
         by_mcp=_bars(dict(by_mcp), grand_total, TOP_N),
+        by_skill_origin=_bars(dict(by_origin), sum(by_origin.values()), None),
+        # Most recent first: the question a run list answers is "when", and
+        # the newest is the one being looked for. Only the handful that are
+        # displayed have their clock parsed.
+        skill_runs=[
+            SkillRun(
+                skill=run["skill"],
+                started=_when(run["ts"]),
+                cost=run["cost"],
+                seconds=run["seconds"],
+                origin=run["origin"],
+            )
+            for run in sorted(runs.values(), key=lambda r: r["ts"], reverse=True)[:TOP_N]
+        ],
         cache_missed_tokens=missed_tokens,
         cache_miss_cost=miss_cost,
         cache_miss_reason=(

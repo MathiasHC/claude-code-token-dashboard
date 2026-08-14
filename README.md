@@ -52,6 +52,11 @@ layout before you have any history of your own.*
 - **A trivia line** — tool calls per reply, your busiest hour, the weekend
   share, the priciest single message, refused tool calls and context
   injections.
+- **Which skills ran, when, and who started them** — a list of recent skill
+  runs with the time, the cost and whether the model reached for it, you
+  typed a slash command, or a subagent inherited it. On a real history that
+  splits about 71% model, 19% subagent, 9% you — the model picks skills far
+  more often than the person does.
 - **By permission mode** — how much ran on auto versus plan, accept-edits or
   approve-each-action. Tracked as state through the transcript, since the
   messages themselves do not carry it. Sessions that never recorded a mode
@@ -138,7 +143,7 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **1189px tall**, measured
+The page is laid out for a width of **1024** and is **1210px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
 the daily chart fits a 1024×768 screen; the two card rows —
 machine time and footprint — sit below the fold and need a short scroll.

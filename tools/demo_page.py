@@ -68,6 +68,8 @@ MCP_SERVERS = (("", 82), ("browser", 7), ("database", 6), ("issue-tracker", 3),
 MISS_REASONS = (("", 88), ("system_changed", 7), ("tools_changed", 3),
                 ("messages_changed", 2))
 
+ORIGINS = (("model", 71), ("subagent", 19), ("you", 10))
+
 MODES = (
     ("auto", 78),
     ("(not recorded)", 11),
@@ -142,7 +144,7 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                     day=day,
                     model=model,
                     project=_weighted(rng, PROJECTS),
-                    skill=_weighted(rng, SKILLS),
+                    skill=(skill := _weighted(rng, SKILLS)),
                     session_id=session_id,
                     input_tokens=fresh,
                     output_tokens=output,
@@ -175,6 +177,12 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                     hour=stamp.hour,
                     denials=(1 if rng.random() < 0.006 else 0),
                     injections=(1 if rng.random() < 0.22 else 0),
+                    # One run per session per skill, which is close enough
+                    # to how they actually cluster.
+                    skill_origin=(
+                        _weighted(rng, ORIGINS) if skill != "(none)" else ""
+                    ),
+                    skill_run=(f"{session_id}:{skill}" if skill != "(none)" else ""),
                 )
             )
 

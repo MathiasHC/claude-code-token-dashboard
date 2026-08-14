@@ -72,6 +72,10 @@ class UsageRecord(NamedTuple):
     #: like work_seconds.
     denials: int = 0
     injections: int = 0
+    #: Who started the skill run this message belongs to, and an id shared
+    #: by every message in that run — the id of its first message.
+    skill_origin: str = ""
+    skill_run: str = ""
 
 
 class Plan(NamedTuple):
@@ -121,6 +125,17 @@ class DayCost:
 
 
 @dataclass(frozen=True)
+class SkillRun:
+    """One stretch of messages attributed to the same skill."""
+
+    skill: str
+    started: str
+    cost: float
+    seconds: float
+    origin: str
+
+
+@dataclass(frozen=True)
 class RangeView:
     """Everything the selected range re-scopes, plus the label that says so.
 
@@ -154,6 +169,8 @@ class RangeView:
     by_effort: list[Bar] = field(default_factory=list)
     by_branch: list[Bar] = field(default_factory=list)
     by_mcp: list[Bar] = field(default_factory=list)
+    by_skill_origin: list[Bar] = field(default_factory=list)
+    skill_runs: list[SkillRun] = field(default_factory=list)
     top_sessions: list[Bar] = field(default_factory=list)
     daily: list[DayCost] = field(default_factory=list)
     main_cost: float = 0.0
@@ -186,6 +203,10 @@ class RangeView:
     reply_messages: int = 0
     denials: int = 0
     injections: int = 0
+    #: Who started the skill run this message belongs to, and an id shared
+    #: by every message in that run — the id of its first message.
+    skill_origin: str = ""
+    skill_run: str = ""
     priciest_message: float = 0.0
     busiest_hour: int = -1
     weekend_share: float = 0.0

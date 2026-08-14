@@ -268,3 +268,118 @@ def test_a_database_from_before_these_columns_still_opens(tmp_path):
     assert row.mcp_server == ""
     assert row.cache_missed_tokens == 0
     assert row.hour == -1
+
+
+# --- who invoked a skill ------------------------------------------------
+
+def skill_msg(offset, mid, skill=None, tool=None, sidechain=False):
+    entry = assistant(offset, mid)
+    entry["isSidechain"] = sidechain
+    if skill:
+        entry["attributionSkill"] = skill
+    if tool:
+        entry["message"]["content"] = [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": tool}}
+        ]
+    return entry
+
+
+def slash(offset, command):
+    return {"type": "user", "timestamp": at(offset), "sessionId": "s1",
+            "message": {"content": f"<command-name>{command}</command-name>"}}
+
+
+def origins(tmp_path, *entries):
+    return {r.message_id: r.skill_origin for r in scan.scan(write(tmp_path, *entries)).records}
+
+
+def test_a_skill_tool_call_credits_the_model(tmp_path):
+    got = origins(tmp_path, skill_msg(0, "m1", tool="graphify"), skill_msg(10, "m2", skill="graphify"))
+    assert got["m2"] == scan.ORIGIN_MODEL
+
+
+def test_a_slash_command_credits_the_person(tmp_path):
+    got = origins(tmp_path, slash(0, "/graphify"), skill_msg(10, "m1", skill="graphify"))
+    assert got["m1"] == scan.ORIGIN_USER
+
+
+def test_a_subagent_inherits_rather_than_invokes(tmp_path):
+    """Every untriggered run in a real corpus is a subagent transcript, and
+    that is structure rather than missing data: the trigger is in the parent
+    file, so the run is labelled inherited instead of unknown."""
+    got = origins(tmp_path, skill_msg(0, "m1", skill="graphify", sidechain=True))
+    assert got["m1"] == scan.ORIGIN_SUBAGENT
+
+
+def test_a_skill_call_in_a_duplicate_record_is_still_credited(tmp_path):
+    """The bug this feature nearly shipped with. One assistant message is
+    written to the transcript more than once and the tool_use block can
+    arrive in a later copy than the attribution did. Deduping by message id
+    discarded the call, crediting 42 of 45 model-invoked runs to nobody."""
+    first = skill_msg(0, "m1", skill="graphify")
+    duplicate = skill_msg(1, "m1", skill="graphify", tool="graphify")
+    got = origins(tmp_path, first, duplicate)
+    assert got["m1"] == scan.ORIGIN_MODEL
+
+
+def test_a_stale_skill_call_does_not_credit_a_much_later_run(tmp_path):
+    """Without a bound, an unconsumed call matched a run 56 messages later."""
+    entries = [skill_msg(0, "m0", tool="graphify")]
+    entries += [skill_msg(i, f"f{i}") for i in range(1, scan.SKILL_TRIGGER_WINDOW + 3)]
+    entries.append(skill_msg(90, "late", skill="graphify"))
+    assert origins(tmp_path, *entries)["late"] != scan.ORIGIN_MODEL
+
+
+def test_every_message_in_a_run_shares_one_id_and_origin(tmp_path):
+    recs = scan.scan(write(
+        tmp_path,
+        skill_msg(0, "m1", tool="graphify"),
+        skill_msg(10, "m2", skill="graphify"),
+        skill_msg(20, "m3", skill="graphify"),
+    )).records
+    inside = [r for r in recs if r.skill == "graphify"]
+    assert len({r.skill_run for r in inside}) == 1
+    assert {r.skill_origin for r in inside} == {scan.ORIGIN_MODEL}
+
+
+def test_a_new_run_of_the_same_skill_is_counted_separately(tmp_path):
+    recs = scan.scan(write(
+        tmp_path,
+        skill_msg(0, "m1", skill="graphify"),
+        skill_msg(10, "m2"),
+        skill_msg(20, "m3", skill="graphify"),
+    )).records
+    assert len({r.skill_run for r in recs if r.skill_run}) == 2
+
+
+# --- the panel ----------------------------------------------------------
+
+def test_runs_are_listed_newest_first():
+    records = [
+        rec("m1", day="2026-08-09", skill="a", skill_run="m1", skill_origin="model", hour=9),
+        rec("m2", day="2026-08-11", skill="b", skill_run="m2", skill_origin="you", hour=9),
+    ]
+    runs = view(records, range_key="all").skill_runs
+    assert [r.skill for r in runs] == ["b", "a"]
+
+
+def test_a_run_carries_its_cost_and_when_it_started():
+    records = [rec("m1", skill="graphify", skill_run="m1", skill_origin="model")]
+    run = view(records).skill_runs[0]
+    assert run.cost > 0
+    assert run.started, "expected a formatted start time"
+    assert run.origin == "model"
+
+
+def test_the_page_shows_the_runs_and_who_invoked_them():
+    records = [rec("m1", skill="graphify", skill_run="m1", skill_origin="model")]
+    out = render_html.render(aggregate.build(records, {}, now=NOW))
+    assert "SKILL RUNS &middot;" in out
+    assert "invoked by:" in out
+    assert "graphify" in out
+
+
+def test_no_runs_panel_content_without_skills():
+    out = render_html.render(aggregate.build([rec("m1")], {}, now=NOW))
+    assert "no skill runs yet" in out
+    assert "invoked by:" not in out
