@@ -3,9 +3,16 @@
 The dashboard shows a line like:
 
 ```
-MACHINE TIME   SUBAGENTS · 32.4%   WAITING ON YOU   SESSIONS
-    1d 1h            8h 7m             19h 58m      10 · 2h 30m each
+  [clock]        [agent tree]        [hourglass]      [terminal]
+MACHINE TIME   SUBAGENTS · 32.4%   WAITING ON YOU     SESSIONS
+    1d 1h            8h 7m             19h 58m     10 · 2h 30m each
 ```
+
+Each card carries a small animated line drawing, sharing the flipbook
+machinery the footprint row uses. The animations are not decoration for its
+own sake — the clock hand sweeps, the pulse travels across the three agents,
+the hourglass runs down, the terminal cursor blinks. What moves is what the
+card measures.
 
 Unlike the [footprint estimate](footprint.md), this is **measured, not
 modelled**. It still rests on one assumption, and this page is about that.

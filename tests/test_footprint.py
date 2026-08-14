@@ -199,8 +199,8 @@ def test_the_drawings_are_big_enough_to_read():
 def test_all_four_quantities_get_a_drawing():
     data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
     out = render_html.render(data)
-    assert out.count('class="fpicon"') == 4
     table = re.search(r'<table class="cards" id="footprint">.*?</table>', out, re.S).group(0)
+    assert table.count('class="cardicon"') == 4
     assert table.count('<td class="card">') == 4
     assert table.count('<div class="cardlabel">') == 4
     assert table.count('<div class="cardvalue">') == 4
@@ -213,8 +213,8 @@ def test_the_animation_degrades_to_a_static_drawing():
     and nothing else, which is a complete line drawing on its own."""
     data = aggregate.build([rec("m1", output_tokens=5_000_000)], {}, now=NOW)
     out = render_html.render(data)
-    assert ".fpf { opacity:0; }" in out
-    assert ".fpf1 { opacity:1;" in out
+    assert ".frame { opacity:0; }" in out
+    assert ".frame1 { opacity:1;" in out
 
 
 def test_the_animation_is_css_only_and_prefixed_for_the_target_browser():
@@ -225,9 +225,9 @@ def test_the_animation_is_css_only_and_prefixed_for_the_target_browser():
     out = render_html.render(data)
     assert "<animate" not in out
     assert "<script" not in out.lower()
-    assert "@-webkit-keyframes fpcycle" in out
-    assert "@keyframes fpcycle" in out
-    assert "-webkit-animation:fpcycle" in out
+    assert "@-webkit-keyframes framecycle" in out
+    assert "@keyframes framecycle" in out
+    assert "-webkit-animation:framecycle" in out
 
 
 def test_motion_can_be_turned_off_by_the_reader():

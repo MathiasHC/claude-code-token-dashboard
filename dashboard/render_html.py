@@ -110,8 +110,8 @@ td.card { background:#161b22; border:1px solid #30363d; padding:11px 6px 10px 6p
 .cardnote.framed { background:#161b22; border:1px solid #30363d;
                    padding:6px 10px; font-size:11px; margin-top:5px; }
 
-/* The footprint strip. Four line drawings across the bottom right, each
-   animated by cross-fading a few hand-drawn frames — a flipbook.
+/* Card icons. Each is a fixed outline plus up to three frames of the one
+   moving part, cross-faded — a flipbook.
 
    Deliberately opacity-only. CSS transforms on SVG children are unreliable
    on the browser this page targets, and SMIL is worse; opacity is the one
@@ -119,21 +119,21 @@ td.card { background:#161b22; border:1px solid #30363d; padding:11px 6px 10px 6p
    animation does not run at all, every frame after the first stays hidden
    and you are left with a static line drawing, which is a perfectly good
    outcome and the reason this approach was chosen over a GIF. */
-.fpicon { display:block; margin:0 auto; }
-.fpf { opacity:0; }
-.fpf1 { opacity:1; -webkit-animation:fpcycle 1.5s steps(1,end) infinite;
-        animation:fpcycle 1.5s steps(1,end) infinite; }
-.fpf2 { -webkit-animation:fpcycle 1.5s steps(1,end) -1.0s infinite;
-        animation:fpcycle 1.5s steps(1,end) -1.0s infinite; }
-.fpf3 { -webkit-animation:fpcycle 1.5s steps(1,end) -0.5s infinite;
-        animation:fpcycle 1.5s steps(1,end) -0.5s infinite; }
-@-webkit-keyframes fpcycle { 0% { opacity:1 } 33% { opacity:1 }
+.cardicon { display:block; margin:0 auto; }
+.frame { opacity:0; }
+.frame1 { opacity:1; -webkit-animation:framecycle 1.5s steps(1,end) infinite;
+        animation:framecycle 1.5s steps(1,end) infinite; }
+.frame2 { -webkit-animation:framecycle 1.5s steps(1,end) -1.0s infinite;
+        animation:framecycle 1.5s steps(1,end) -1.0s infinite; }
+.frame3 { -webkit-animation:framecycle 1.5s steps(1,end) -0.5s infinite;
+        animation:framecycle 1.5s steps(1,end) -0.5s infinite; }
+@-webkit-keyframes framecycle { 0% { opacity:1 } 33% { opacity:1 }
                              34% { opacity:0 } 100% { opacity:0 } }
-@keyframes fpcycle { 0% { opacity:1 } 33% { opacity:1 }
+@keyframes framecycle { 0% { opacity:1 } 33% { opacity:1 }
                      34% { opacity:0 } 100% { opacity:0 } }
 @media (prefers-reduced-motion: reduce) {
-  .fpf1, .fpf2, .fpf3 { -webkit-animation:none; animation:none; }
-  .fpf1 { opacity:1 } .fpf2, .fpf3 { opacity:0 }
+  .frame1, .frame2, .frame3 { -webkit-animation:none; animation:none; }
+  .frame1 { opacity:1 } .frame2, .frame3 { opacity:0 }
 }
 """.strip()
 
@@ -427,24 +427,28 @@ def _worked_band(view: RangeView) -> str:
     """
     if view.worked_seconds <= 0:
         return ""
-    cards = [("MACHINE TIME", _duration(view.worked_seconds))]
+    cards = [("worked", "MACHINE TIME", _duration(view.worked_seconds))]
     if view.subagent_worked_seconds > 0:
         cards.append(
             (
+                "subagents",
                 f"SUBAGENTS &middot; {_pct(view.subagent_worked_share)}",
                 _duration(view.subagent_worked_seconds),
             )
         )
     if view.waited_seconds > 0:
-        cards.append(("WAITING ON YOU", _duration(view.waited_seconds)))
+        cards.append(("waiting", "WAITING ON YOU", _duration(view.waited_seconds)))
     if view.sessions:
         each = _duration(view.worked_seconds / view.sessions)
-        cards.append(("SESSIONS", f"{view.sessions:,} &middot; {each} each"))
+        cards.append(
+            ("sessions", "SESSIONS", f"{view.sessions:,} &middot; {each} each")
+        )
 
     cells = "".join(
-        f'<td class="card"><div class="cardlabel">{label}</div>'
+        f'<td class="card">{_icon(kind)}'
+        f'<div class="cardlabel">{label}</div>'
         f'<div class="cardvalue">{value}</div></td>'
-        for label, value in cards
+        for kind, label, value in cards
     )
     return (
         f'<table class="cards" id="worked"><tbody><tr>{cells}</tr></tbody></table>'
@@ -474,7 +478,7 @@ def _one_sig_fig(value: float, unit: str, small_unit: str, factor: float) -> str
 
 
 #: Four line drawings for the footprint strip. Each is a fixed outline plus
-#: three frames of the one moving part, cross-faded by the .fpf* classes.
+#: three frames of the one moving part, cross-faded by the .frame* classes.
 #: Drawn on a 24x24 grid, stroked not filled, so they stay legible at 22px on
 #: a screen being read from across a room.
 _ICONS = {
@@ -488,6 +492,60 @@ _ICONS = {
             '<path d="M19 2l-2.6 4.4h2.4L16.4 11"/>',
             '<path d="M19.4 2.4l-2.2 4h2.1l-2.2 3.8"/>',
             "",
+        ),
+    ),
+    # A clock, hand sweeping. The most literal possible reading of "how
+    # long", and rotation is exactly what three opacity frames can fake.
+    "worked": (
+        "#58a6ff",
+        '<path d="M12 3.4a8.6 8.6 0 1 0 .1 0"/>'
+        '<path d="M12 4.6v1.7M19.4 12h-1.7M12 19.4v-1.7M4.6 12h1.7"/>'
+        '<path d="M12 11.2a.8 .8 0 1 0 .1 0"/>',
+        (
+            '<path d="M12 12V6.9"/>',
+            '<path d="M12 12l4.4 2.6"/>',
+            '<path d="M12 12l-4.4 2.6"/>',
+        ),
+    ),
+    # One parent, three children, and a pulse travelling across them —
+    # which is what parallel subagents look like from the outside.
+    "subagents": (
+        "#a371f7",
+        '<path d="M10 4.6a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/>'
+        '<path d="M12 6.6v2.2M5.5 8.8h13M5.5 8.8v2.2M12 8.8v2.2M18.5 8.8v2.2"/>'
+        '<path d="M3.5 13a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/>'
+        '<path d="M10 13a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/>'
+        '<path d="M16.5 13a2 2 0 1 0 4 0a2 2 0 1 0-4 0"/>',
+        (
+            '<path d="M5.5 16.6v3.2"/>',
+            '<path d="M12 16.6v3.2"/>',
+            '<path d="M18.5 16.6v3.2"/>',
+        ),
+    ),
+    # An hourglass running down. Waiting has an obvious icon and there is
+    # no reason to be clever about it.
+    "waiting": (
+        "#d29922",
+        '<path d="M6.6 3.6h10.8M6.6 20.4h10.8"/>'
+        '<path d="M7.8 3.6c0 4 4.2 5.6 4.2 8.4s-4.2 4.4-4.2 8.4"/>'
+        '<path d="M16.2 3.6c0 4-4.2 5.6-4.2 8.4s4.2 4.4 4.2 8.4"/>',
+        (
+            '<path d="M9 6.2h6"/>',
+            '<path d="M10.2 8.4h3.6M12 12.4v3"/>',
+            '<path d="M9 18.2h6"/>',
+        ),
+    ),
+    # A terminal window with a blinking cursor. The blank middle frame is
+    # the blink — the same trick the power station uses for its bolt.
+    "sessions": (
+        "#8b949e",
+        '<path d="M3.4 5.4h17.2v13.2H3.4z"/>'
+        '<path d="M3.4 9h17.2"/>'
+        '<path d="M6.6 12.4l2.2 2-2.2 2"/>',
+        (
+            '<path d="M10.8 16.4h3.6"/>',
+            "",
+            '<path d="M10.8 16.4h3.6"/>',
         ),
     ),
     # A tap, running. Two streams wave in opposite phase and the whole pair
@@ -557,14 +615,14 @@ ICON_PX = 46
 def _icon(kind: str) -> str:
     colour, outline, frames = _ICONS[kind]
     animated = "".join(
-        f'<g class="fpf fpf{index}">{frame}</g>'
+        f'<g class="frame frame{index}">{frame}</g>'
         for index, frame in enumerate(frames, start=1)
         if frame
     )
     # Stroke width is in user units, so it scales with the box. 1.15 at 46px
     # renders about 2.2 device px — a drawn line rather than a slab.
     return (
-        f'<svg class="fpicon" width="{ICON_PX}" height="{ICON_PX}" '
+        f'<svg class="cardicon" width="{ICON_PX}" height="{ICON_PX}" '
         'viewBox="0 0 24 24" '
         f'fill="none" stroke="{colour}" stroke-width="1.15" '
         'stroke-linecap="round" stroke-linejoin="round" '
