@@ -59,6 +59,19 @@ MAX_WAIT_GAP_SECONDS = 900.0
 #: UNKNOWN_MODE rather than being assumed into the majority.
 UNKNOWN_MODE = "(not recorded)"
 
+#: How many assistant messages a `Skill` tool call stays "pending" while we
+#: wait for the run it started. Measured on real transcripts: 44 of 45 calls
+#: are followed by their attributed run within three messages. Without a
+#: bound, an unconsumed call matched a run 56 messages later and credited
+#: the wrong trigger.
+SKILL_TRIGGER_WINDOW = 5
+
+#: Who started a skill run.
+ORIGIN_MODEL = "model"
+ORIGIN_USER = "you"
+ORIGIN_SUBAGENT = "subagent"
+ORIGIN_UNKNOWN = "(not recorded)"
+
 
 class FileState(NamedTuple):
     """What we knew about a transcript after the last pass.
@@ -129,6 +142,41 @@ def _is_human_turn(entry: dict, kind: str | None) -> bool:
             for block in content
         )
     return False
+
+
+def _plain_text(message: dict | None) -> str:
+    """The human-typed text of a message, however it is shaped."""
+    content = (message or {}).get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return ""
+
+
+def _skill_origin(
+    skill: str, sidechain: bool, tool_skill: str | None, command: str | None
+) -> str:
+    """Who started this skill run.
+
+    Three traces, and on real transcripts they partition cleanly: a `Skill`
+    tool call in the assistant's own output, a slash command the person
+    typed, or neither — which happens only inside subagent transcripts,
+    where the skill is inherited from whoever spawned the agent and the
+    trigger lives in the parent file.
+    """
+    short = skill.split(":")[-1]
+    if tool_skill and short in tool_skill:
+        return ORIGIN_MODEL
+    if command and short in command:
+        return ORIGIN_USER
+    if sidechain:
+        return ORIGIN_SUBAGENT
+    return ORIGIN_UNKNOWN
 
 
 def _cache_miss(message: dict) -> tuple[int, str]:
@@ -271,6 +319,13 @@ def scan(
         mode = UNKNOWN_MODE
         pending_denials = 0
         pending_injections = 0
+        pending_tool_skill = None
+        pending_tool_age = 0
+        pending_command = None
+        previous_skill = None
+        run_origin = ""
+        run_id = ""
+        run_start = 0
         for raw in chunk[:end].split(b"\n"):
             if not raw.strip():
                 continue
@@ -291,6 +346,9 @@ def scan(
                 mode = str(declared)
             if entry.get("toolDenialKind"):
                 pending_denials += 1
+            if kind == "user":
+                for name in COMMAND_NAME_RE.findall(_plain_text(entry.get("message"))):
+                    pending_command = name.strip().lstrip("/")
             if kind == "attachment":
                 # Not files somebody pasted: 33% are task reminders, 16%
                 # tool deltas, 14% skill listings. They are context the
@@ -332,6 +390,36 @@ def scan(
             if kind != "assistant":
                 continue
             message = entry.get("message") or {}
+
+            # Before the dedupe below: one assistant message is written to
+            # the transcript more than once, and the tool_use block can
+            # arrive in a later copy than the attribution did. Dropping the
+            # duplicate discards the Skill call with it, which credited 42
+            # of 45 model-invoked runs to nobody.
+            for block in message.get("content") or []:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and block.get("name") == "Skill"
+                ):
+                    pending_tool_skill = str((block.get("input") or {}).get("skill") or "")
+                    pending_tool_age = 0
+                    # The call may land after its own run has already begun,
+                    # for the same reason. Upgrade the run rather than lose it.
+                    if (
+                        run_id
+                        and run_origin == ORIGIN_UNKNOWN
+                        and previous_skill
+                        and previous_skill.split(":")[-1] in pending_tool_skill
+                    ):
+                        run_origin = ORIGIN_MODEL
+                        for index in range(run_start, len(records)):
+                            if records[index].skill_run == run_id:
+                                records[index] = records[index]._replace(
+                                    skill_origin=ORIGIN_MODEL
+                                )
+                        pending_tool_skill = None
+
             usage = message.get("usage")
             if not isinstance(usage, dict) or not usage:
                 continue
@@ -339,6 +427,23 @@ def scan(
             if not message_id or message_id in seen_ids:
                 continue
             seen_ids.add(message_id)
+
+            skill = str(entry.get("attributionSkill") or "(none)")
+            if skill != previous_skill:
+                run_origin, run_id = "", ""
+                if skill != "(none)":
+                    run_id = str(message_id)
+                    run_start = len(records)
+                    run_origin = _skill_origin(
+                        skill,
+                        bool(entry.get("isSidechain")),
+                        pending_tool_skill if pending_tool_age <= SKILL_TRIGGER_WINDOW else None,
+                        pending_command,
+                    )
+                    pending_tool_skill = pending_command = None
+                previous_skill = skill
+            if pending_tool_skill is not None:
+                pending_tool_age += 1
 
             write_5m, write_1h = _cache_writes(usage)
             ts = entry.get("timestamp") or ""
@@ -350,7 +455,7 @@ def scan(
                     day=local_day(ts),
                     model=message.get("model") or "(unknown)",
                     project=resolve_project(entry.get("cwd")),
-                    skill=str(entry.get("attributionSkill") or "(none)"),
+                    skill=skill,
                     session_id=session_id,
                     input_tokens=int(usage.get("input_tokens") or 0),
                     output_tokens=int(usage.get("output_tokens") or 0),
@@ -372,6 +477,8 @@ def scan(
                     hour=local_hour(ts),
                     denials=pending_denials,
                     injections=pending_injections,
+                    skill_origin=run_origin,
+                    skill_run=run_id,
                 )
             )
             last_emitted = len(records) - 1

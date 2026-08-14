@@ -730,6 +730,44 @@ def _trivia(view: RangeView) -> str:
     )
 
 
+def _origin_note(view: RangeView) -> str:
+    """Who reached for the skills.
+
+    Three traces that partition cleanly on real data, so unlike the mode
+    panel this one has no unknown bucket to apologise for: a Skill tool call
+    the model made, a slash command the person typed, or a subagent that
+    inherited the skill from whoever spawned it.
+    """
+    if not view.by_skill_origin:
+        return ""
+    parts = " &middot; ".join(
+        f"{_pct(bar.share)} {escape(bar.label)}" for bar in view.by_skill_origin
+    )
+    return f'<div class="note">invoked by: {parts}</div>'
+
+
+def _skill_runs(runs) -> str:
+    """When each skill was called, newest first.
+
+    Same two-column shape as TOP SESSIONS, so the eye reads the pair the
+    same way: what it was on the left, what it cost on the right.
+    """
+    if not runs:
+        return '<div class="note">no skill runs yet</div>'
+    out = ['<table class="srows">']
+    for run in runs:
+        when = f"{escape(run.started)} " if run.started else ""
+        out.append(
+            "<tr>"
+            f'<td class="stitle">{when}{escape(run.skill)}'
+            f' <span class="pct">{escape(run.origin)}</span></td>'
+            f'<td class="amt">{_money(run.cost)}</td>'
+            "</tr>"
+        )
+    out.append("</table>")
+    return "".join(out)
+
+
 def _cache_note(view: RangeView) -> str:
     """What caching bought, rather than how often it hit.
 
@@ -841,7 +879,8 @@ def render(
 <table class="grid"><tbody>
 <tr>
 <td><h2>BY PROJECT &middot; {escape(view.label)}</h2>{_rows(view.by_project)}</td>
-<td><h2>BY SKILL &middot; {escape(view.label)} &middot; ATTRIBUTED</h2>{_rows(view.by_skill)}</td>
+<td><h2>BY SKILL &middot; {escape(view.label)} &middot; ATTRIBUTED</h2>{_rows(view.by_skill)}
+{_origin_note(view)}</td>
 <td><h2>BY MODE &middot; {escape(view.label)}</h2>{_rows(view.by_mode)}</td>
 <td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
 </tr>
@@ -851,6 +890,7 @@ def render(
 <td><h2>BY EFFORT &middot; {escape(view.label)}</h2>{_rows(view.by_effort)}</td>
 <td><h2>BY BRANCH &middot; {escape(view.label)}</h2>{_rows(view.by_branch)}</td>
 <td><h2>BY MCP SERVER &middot; {escape(view.label)}</h2>{_rows(view.by_mcp)}</td>
+<td><h2>SKILL RUNS &middot; {escape(view.label)}</h2>{_skill_runs(view.skill_runs)}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>

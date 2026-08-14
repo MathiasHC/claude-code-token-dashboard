@@ -83,6 +83,31 @@ number of bars in the daily chart. Distinct from the *width* of a window — a
 30-day range with three active days plots three bars, and saying "last 3 days"
 about it is wrong.
 
+## Skill run
+
+A contiguous stretch of messages attributed to the same skill. Identified by
+`skill_run` — the message id of the run's first message — so every message
+in the run shares one key and the page can list runs rather than messages.
+
+## Skill origin
+
+Who started a run. Three traces that partition cleanly on real transcripts,
+with no unknown bucket:
+
+- **model** — the assistant called the `Skill` tool. A tool call stays
+  pending for `scan.SKILL_TRIGGER_WINDOW` messages; without a bound an
+  unconsumed call matched a run 56 messages later.
+- **you** — a `<command-name>` slash command in a typed message.
+- **subagent** — neither, which happens only inside subagent transcripts.
+  That is structure, not missing data: the agent inherited the skill from
+  whoever spawned it and the trigger is in the parent file.
+
+One assistant message can be written to a transcript more than once, and the
+`Skill` tool block may arrive in a later copy than the attribution did — so
+the call is read *before* the message-id dedupe, and a run already begun is
+upgraded retroactively. Missing that credited 42 of 45 model-invoked runs to
+nobody.
+
 ## Cache miss
 
 Prefix tokens the cache failed to hold, re-processed and billed at write

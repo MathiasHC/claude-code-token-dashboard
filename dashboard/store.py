@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS usage (
   stop_reason       TEXT    NOT NULL DEFAULT '',
   hour              INTEGER NOT NULL DEFAULT -1,
   denials           INTEGER NOT NULL DEFAULT 0,
-  injections        INTEGER NOT NULL DEFAULT 0
+  injections        INTEGER NOT NULL DEFAULT 0,
+  skill_origin      TEXT    NOT NULL DEFAULT '',
+  skill_run         TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS usage_day ON usage(day);
 
@@ -88,6 +90,8 @@ _FIELDS = (
     "hour",
     "denials",
     "injections",
+    "skill_origin",
+    "skill_run",
 )
 _COLUMNS = ", ".join(_FIELDS)
 _PLACEHOLDERS = ",".join("?" * len(_FIELDS))
@@ -161,6 +165,8 @@ class Store:
             ("hour", "INTEGER NOT NULL DEFAULT -1"),
             ("denials", "INTEGER NOT NULL DEFAULT 0"),
             ("injections", "INTEGER NOT NULL DEFAULT 0"),
+            ("skill_origin", "TEXT    NOT NULL DEFAULT ''"),
+            ("skill_run", "TEXT    NOT NULL DEFAULT ''"),
         ):
             if column not in existing:
                 self._conn.execute(
