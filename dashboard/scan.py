@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from .dates import instant, local_day
+from .dates import instant, local_day, local_hour
 from .models import UsageRecord
 
 WORKTREE_RE = re.compile(r"^(?P<parent>.*?)/\.claude/worktrees/")
@@ -129,6 +129,22 @@ def _is_human_turn(entry: dict, kind: str | None) -> bool:
             for block in content
         )
     return False
+
+
+def _cache_miss(message: dict) -> tuple[int, str]:
+    """Prefix tokens the cache failed to hold, and why.
+
+    Lives in message.diagnostics.cache_miss_reason. A miss means the prefix
+    is re-processed and billed at cache-*write* rates rather than the 0.1x
+    read rate, so the gap between the two is money spent on nothing.
+    """
+    diagnostics = message.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        return 0, ""
+    reason = diagnostics.get("cache_miss_reason")
+    if not isinstance(reason, dict):
+        return 0, ""
+    return int(reason.get("cache_missed_input_tokens") or 0), str(reason.get("type") or "")
 
 
 def _cache_writes(usage: dict) -> tuple[int, int]:
@@ -253,6 +269,8 @@ def scan(
         pending_wait = 0.0
         last_emitted = None
         mode = UNKNOWN_MODE
+        pending_denials = 0
+        pending_injections = 0
         for raw in chunk[:end].split(b"\n"):
             if not raw.strip():
                 continue
@@ -271,6 +289,14 @@ def scan(
             declared = entry.get("permissionMode")
             if declared:
                 mode = str(declared)
+            if entry.get("toolDenialKind"):
+                pending_denials += 1
+            if kind == "attachment":
+                # Not files somebody pasted: 33% are task reminders, 16%
+                # tool deltas, 14% skill listings. They are context the
+                # harness pushes in, and the tool/instruction ones are what
+                # invalidate the prompt cache.
+                pending_injections += 1
 
             # Machine time, accumulated across every record type. A gap that
             # ends at a human turn is the human thinking and is discarded;
@@ -316,6 +342,7 @@ def scan(
 
             write_5m, write_1h = _cache_writes(usage)
             ts = entry.get("timestamp") or ""
+            missed, miss_reason = _cache_miss(message)
             records.append(
                 UsageRecord(
                     message_id=message_id,
@@ -336,20 +363,34 @@ def scan(
                     work_seconds=pending_work,
                     wait_seconds=pending_wait,
                     mode=mode,
+                    effort=str(entry.get("effort") or "(none)"),
+                    branch=str(entry.get("gitBranch") or "(none)"),
+                    mcp_server=str(entry.get("attributionMcpServer") or ""),
+                    cache_missed_tokens=missed,
+                    cache_miss_reason=miss_reason,
+                    stop_reason=str(message.get("stop_reason") or ""),
+                    hour=local_hour(ts),
+                    denials=pending_denials,
+                    injections=pending_injections,
                 )
             )
             last_emitted = len(records) - 1
             pending_work = 0.0
             pending_wait = 0.0
+            pending_denials = 0
+            pending_injections = 0
         # Tool runs after the last message that carried usage have nowhere
         # to land, because only usage-bearing messages become records. Give
         # them to the last record this file produced rather than lose them:
         # 4.8 hours were stranded this way across 441 real transcripts.
-        if (pending_work or pending_wait) and last_emitted is not None:
+        leftover = pending_work or pending_wait or pending_denials or pending_injections
+        if leftover and last_emitted is not None:
             tail = records[last_emitted]
             records[last_emitted] = tail._replace(
                 work_seconds=tail.work_seconds + pending_work,
                 wait_seconds=tail.wait_seconds + pending_wait,
+                denials=tail.denials + pending_denials,
+                injections=tail.injections + pending_injections,
             )
 
         stats[key] = FileState(

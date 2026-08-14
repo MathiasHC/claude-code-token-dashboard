@@ -684,6 +684,52 @@ def _footprint_note(view: RangeView) -> str:
     )
 
 
+def _miss_note(view: RangeView) -> str:
+    """What the cache failing to hold cost.
+
+    The counterpart to the line above it. Caching saved is a counterfactual;
+    this is money actually spent re-processing a prefix that should have been
+    a cheap read. The figure is the *gap* between write and read rates, not
+    the whole charge — the tokens had to be paid for either way.
+    """
+    if view.cache_missed_tokens <= 0 or view.cache_miss_cost <= 0:
+        return ""
+    because = f" &middot; mostly {escape(view.cache_miss_reason)}" if view.cache_miss_reason else ""
+    return (
+        f'<div class="note">cache misses cost {_money(view.cache_miss_cost)} '
+        f"&middot; {view.cache_missed_tokens / 1e6:,.0f}M tokens re-read at "
+        f"write rates{because}</div>"
+    )
+
+
+def _trivia(view: RangeView) -> str:
+    """The shape of the work rather than its size.
+
+    Everything here is measured and none of it is actionable, which is the
+    point — it sits in one line at the bottom rather than taking a panel.
+    """
+    bits = []
+    if view.reply_messages:
+        bits.append(f"{view.tools_per_reply:.0f} tool calls per reply")
+    if view.busiest_hour >= 0:
+        bits.append(f"busiest at {view.busiest_hour:02d}:00")
+    if view.weekend_share > 0:
+        bits.append(f"{_pct(view.weekend_share)} at weekends")
+    if view.priciest_message > 0:
+        bits.append(f"priciest message {_money(view.priciest_message)}")
+    if view.denials:
+        bits.append(f"{view.denials:,} tool calls refused")
+    if view.injections:
+        bits.append(f"{view.injections:,} context injections")
+    if not bits:
+        return ""
+    return (
+        '<div class="cardnote framed">'
+        + " &middot; ".join(bits)
+        + "</div>"
+    )
+
+
 def _cache_note(view: RangeView) -> str:
     """What caching bought, rather than how often it hit.
 
@@ -786,7 +832,7 @@ def render(
 <table class="grid"><tbody>
 <tr>
 <td><h2>WHERE THE MONEY GOES &middot; {escape(view.label)}</h2>{_rows(view.money)}
-<div class="note">{_cache_note(view)}</div></td>
+<div class="note">{_cache_note(view)}</div>{_miss_note(view)}</td>
 <td><h2>BY MODEL &middot; {escape(view.label)}</h2>{_rows(view.by_model)}
 <div class="note">avg {_money(view.avg_cost_per_message)}/msg &middot;
 {_money(view.avg_cost_per_session)}/session</div>{unpriced}</td>
@@ -801,8 +847,16 @@ def render(
 </tr>
 </tbody></table>
 <table class="grid"><tbody>
+<tr>
+<td><h2>BY EFFORT &middot; {escape(view.label)}</h2>{_rows(view.by_effort)}</td>
+<td><h2>BY BRANCH &middot; {escape(view.label)}</h2>{_rows(view.by_branch)}</td>
+<td><h2>BY MCP SERVER &middot; {escape(view.label)}</h2>{_rows(view.by_mcp)}</td>
+</tr>
+</tbody></table>
+<table class="grid"><tbody>
 <tr><td><h2>{_daily_heading(view)}</h2>{_daily(view, data.today_day)}</td></tr>
 </tbody></table>
+{_trivia(view)}
 {_worked_band(view)}
 {_footprint_note(view)}
 </body></html>

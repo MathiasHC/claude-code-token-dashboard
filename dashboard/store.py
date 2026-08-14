@@ -30,7 +30,16 @@ CREATE TABLE IF NOT EXISTS usage (
   source            TEXT NOT NULL DEFAULT 'code',
   work_seconds      REAL    NOT NULL DEFAULT 0,
   wait_seconds      REAL    NOT NULL DEFAULT 0,
-  mode              TEXT    NOT NULL DEFAULT '(not recorded)'
+  mode              TEXT    NOT NULL DEFAULT '(not recorded)',
+  effort            TEXT    NOT NULL DEFAULT '(none)',
+  branch            TEXT    NOT NULL DEFAULT '(none)',
+  mcp_server        TEXT    NOT NULL DEFAULT '',
+  cache_missed_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_miss_reason TEXT    NOT NULL DEFAULT '',
+  stop_reason       TEXT    NOT NULL DEFAULT '',
+  hour              INTEGER NOT NULL DEFAULT -1,
+  denials           INTEGER NOT NULL DEFAULT 0,
+  injections        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS usage_day ON usage(day);
 
@@ -70,6 +79,15 @@ _FIELDS = (
     "work_seconds",
     "wait_seconds",
     "mode",
+    "effort",
+    "branch",
+    "mcp_server",
+    "cache_missed_tokens",
+    "cache_miss_reason",
+    "stop_reason",
+    "hour",
+    "denials",
+    "injections",
 )
 _COLUMNS = ", ".join(_FIELDS)
 _PLACEHOLDERS = ",".join("?" * len(_FIELDS))
@@ -130,6 +148,24 @@ class Store:
                 "ALTER TABLE usage ADD COLUMN mode TEXT NOT NULL "
                 "DEFAULT '(not recorded)'"
             )
+        # Everything added since. Each defaults to the value that means
+        # "we never recorded this", so an old row reads back as unknown
+        # rather than as a measurement of zero.
+        for column, declaration in (
+            ("effort", "TEXT    NOT NULL DEFAULT '(none)'"),
+            ("branch", "TEXT    NOT NULL DEFAULT '(none)'"),
+            ("mcp_server", "TEXT    NOT NULL DEFAULT ''"),
+            ("cache_missed_tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("cache_miss_reason", "TEXT    NOT NULL DEFAULT ''"),
+            ("stop_reason", "TEXT    NOT NULL DEFAULT ''"),
+            ("hour", "INTEGER NOT NULL DEFAULT -1"),
+            ("denials", "INTEGER NOT NULL DEFAULT 0"),
+            ("injections", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if column not in existing:
+                self._conn.execute(
+                    f"ALTER TABLE usage ADD COLUMN {column} {declaration}"
+                )
         # Incremental reads. Existing rows get offset 0 and an empty head,
         # which _resume_offset treats as "re-read this once" — the next pass
         # rebuilds the offsets, and dedup makes the extra read harmless.

@@ -41,6 +41,17 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
+- **What the cache cost you** — beside what caching saved, what it failed to
+  save: tokens re-processed at write rates because the prefix changed, and
+  which change was to blame. The only figure on the page that is plainly
+  wasted money.
+- **By effort, branch and MCP server** — which reasoning effort, which git
+  branch, and which MCP servers the spend went through. Loaded MCP servers
+  sit in context on every turn, so that panel answers "is this worth keeping
+  switched on".
+- **A trivia line** — tool calls per reply, your busiest hour, the weekend
+  share, the priciest single message, refused tool calls and context
+  injections.
 - **By permission mode** — how much ran on auto versus plan, accept-edits or
   approve-each-action. Tracked as state through the transcript, since the
   messages themselves do not carry it. Sessions that never recorded a mode
@@ -127,7 +138,7 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **1014px tall**, measured
+The page is laid out for a width of **1024** and is **1189px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
 the daily chart fits a 1024×768 screen; the two card rows —
 machine time and footprint — sit below the fold and need a short scroll.

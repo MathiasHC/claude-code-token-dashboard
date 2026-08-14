@@ -7,6 +7,7 @@ import datetime as dt
 from collections import Counter, defaultdict
 
 from . import footprint, plans, pricing, ranges
+from . import dates
 from .dates import instant
 from .models import Bar, DashboardData, DayCost, Plan, RangeView, UsageRecord, Window
 
@@ -64,6 +65,19 @@ MODE_LABELS = {
     "plan": "plan",
     "acceptEdits": "accept edits",
     "bypassPermissions": "bypass permissions",
+}
+
+#: A cache miss re-processes the prefix at write rates instead of the 0.1x
+#: read rate. The waste is the gap between the two, not the whole charge.
+CACHE_MISS_PREMIUM = pricing.CACHE_WRITE_5M_MULTIPLIER - pricing.CACHE_READ_MULTIPLIER
+
+#: Why the cache did not hold, in words.
+MISS_REASONS = {
+    "system_changed": "the system prompt changed",
+    "tools_changed": "the tool set changed",
+    "messages_changed": "earlier messages changed",
+    "previous_message_not_found": "the conversation was resumed",
+    "unavailable": "the cache was unavailable",
 }
 
 
@@ -191,6 +205,13 @@ def build(
     # Scoping is one more per-day lookup rather than a second filtering
     # pass over the history.
     scoped_days = {day for day in membership if in_selected_range(day)}
+    # One parse per distinct day, not per record — the same discipline the
+    # window membership above follows.
+    weekend_days = {
+        day: (parsed.weekday() >= 5)
+        for day in membership
+        if (parsed := dates.parse_day(day)) is not None
+    }
     bucket_cost = dict.fromkeys(windows, 0.0)
     bucket_count = dict.fromkeys(windows, 0)
 
@@ -201,6 +222,17 @@ def build(
     by_session: dict[str, float] = defaultdict(float)
     by_source: dict[str, float] = defaultdict(float)
     by_mode: dict[str, float] = defaultdict(float)
+    by_effort: dict[str, float] = defaultdict(float)
+    by_branch: dict[str, float] = defaultdict(float)
+    by_mcp: dict[str, float] = defaultdict(float)
+    miss_by_reason: dict[str, int] = defaultdict(int)
+    missed_tokens = 0
+    miss_cost = 0.0
+    tool_use_messages = reply_messages = 0
+    denials = injections = 0
+    priciest = 0.0
+    per_hour: dict[int, int] = defaultdict(int)
+    weekend_cost = 0.0
     per_day: dict[str, float] = defaultdict(float)
     # Global, not range-scoped: the plan band talks about this month
     # regardless of which range the panels below are showing.
@@ -254,6 +286,27 @@ def build(
         by_session[record.session_id] += value
         by_source[SOURCE_LABELS.get(record.source, record.source)] += value
         by_mode[MODE_LABELS.get(record.mode, record.mode)] += value
+        by_effort[record.effort] += value
+        by_branch[record.branch] += value
+        if record.mcp_server:
+            by_mcp[record.mcp_server] += value
+        if record.cache_missed_tokens:
+            missed_tokens += record.cache_missed_tokens
+            miss_by_reason[record.cache_miss_reason] += record.cache_missed_tokens
+            found = pricing.rates_for(record.model, record.speed)
+            if found is not None:
+                miss_cost += record.cache_missed_tokens * found[0] / 1e6 * CACHE_MISS_PREMIUM
+        if record.stop_reason == "tool_use":
+            tool_use_messages += 1
+        elif record.stop_reason == "end_turn":
+            reply_messages += 1
+        denials += record.denials
+        injections += record.injections
+        priciest = max(priciest, value)
+        if record.hour >= 0:
+            per_hour[record.hour] += 1
+        if weekend_days.get(record.day):
+            weekend_cost += value
         per_day[record.day] += value
 
         if record.is_subagent:
@@ -309,6 +362,26 @@ def build(
         # ~37% of messages it is real information about the history rather
         # than noise, and dropping it would make the shares lie.
         by_mode=_bars(dict(by_mode), grand_total, None),
+        by_effort=_bars(dict(by_effort), grand_total, None),
+        by_branch=_bars(dict(by_branch), grand_total, TOP_N),
+        by_mcp=_bars(dict(by_mcp), grand_total, TOP_N),
+        cache_missed_tokens=missed_tokens,
+        cache_miss_cost=miss_cost,
+        cache_miss_reason=(
+            MISS_REASONS.get(
+                max(miss_by_reason, key=miss_by_reason.get),
+                max(miss_by_reason, key=miss_by_reason.get),
+            )
+            if miss_by_reason
+            else ""
+        ),
+        tool_use_messages=tool_use_messages,
+        reply_messages=reply_messages,
+        denials=denials,
+        injections=injections,
+        priciest_message=priciest,
+        busiest_hour=(max(per_hour, key=per_hour.get) if per_hour else -1),
+        weekend_share=(weekend_cost / grand_total if grand_total else 0.0),
         top_sessions=session_bars,
         daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
         main_cost=main_cost,
