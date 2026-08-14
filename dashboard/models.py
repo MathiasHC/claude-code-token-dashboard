@@ -48,6 +48,30 @@ class UsageRecord(NamedTuple):
     #: Permission mode in force — auto, default, plan, acceptEdits. Tracked
     #: as state by scan, since the message itself never carries it.
     mode: str = "(not recorded)"
+    #: Reasoning effort the message was produced at.
+    effort: str = "(none)"
+    #: Git branch the working directory was on.
+    branch: str = "(none)"
+    #: MCP server the message attributed a tool call to. Empty for the
+    #: overwhelming majority, which call no MCP tool at all.
+    mcp_server: str = ""
+    #: Prefix tokens that had to be re-processed because the cache did not
+    #: hold, and why. Billed at write rates instead of read rates, so this
+    #: is the one measured quantity on the page that is straightforwardly
+    #: wasted money.
+    cache_missed_tokens: int = 0
+    cache_miss_reason: str = ""
+    #: Why the model stopped. "tool_use" means it is mid-turn and about to
+    #: call something; "end_turn" means it finished talking.
+    stop_reason: str = ""
+    #: Local hour, so the page can show when the work happens without
+    #: re-parsing every timestamp.
+    hour: int = -1
+    #: Tool calls refused since the previous message, and context blocks the
+    #: harness injected. Both accumulate across records that carry no usage,
+    #: like work_seconds.
+    denials: int = 0
+    injections: int = 0
 
 
 class Plan(NamedTuple):
@@ -127,6 +151,9 @@ class RangeView:
     by_skill: list[Bar] = field(default_factory=list)
     by_source: list[Bar] = field(default_factory=list)
     by_mode: list[Bar] = field(default_factory=list)
+    by_effort: list[Bar] = field(default_factory=list)
+    by_branch: list[Bar] = field(default_factory=list)
+    by_mcp: list[Bar] = field(default_factory=list)
     top_sessions: list[Bar] = field(default_factory=list)
     daily: list[DayCost] = field(default_factory=list)
     main_cost: float = 0.0
@@ -148,6 +175,24 @@ class RangeView:
     waited_seconds: float = 0.0
     #: Distinct sessions that carried spend inside this range.
     sessions: int = 0
+    #: Prefix tokens re-processed because the cache did not hold, what that
+    #: cost above a cache read, and the reason that dominated.
+    cache_missed_tokens: int = 0
+    cache_miss_cost: float = 0.0
+    cache_miss_reason: str = ""
+    #: Trivia. Cheap to carry, and the only figures on the page that are
+    #: about the shape of the work rather than its size.
+    tool_use_messages: int = 0
+    reply_messages: int = 0
+    denials: int = 0
+    injections: int = 0
+    priciest_message: float = 0.0
+    busiest_hour: int = -1
+    weekend_share: float = 0.0
+
+    @property
+    def tools_per_reply(self) -> float:
+        return self.tool_use_messages / self.reply_messages if self.reply_messages else 0.0
     #: Modelled energy/water/carbon for the tokens in this range. Order of
     #: magnitude only — see dashboard/footprint.py for why.
     footprint: Footprint = EMPTY_FOOTPRINT

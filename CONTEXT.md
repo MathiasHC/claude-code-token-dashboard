@@ -83,6 +83,17 @@ number of bars in the daily chart. Distinct from the *width* of a window — a
 30-day range with three active days plots three bars, and saying "last 3 days"
 about it is wrong.
 
+## Cache miss
+
+Prefix tokens the cache failed to hold, re-processed and billed at write
+rates instead of the 0.1x read rate. `RangeView.cache_miss_cost` is the
+**gap** between those two rates, not the whole charge — the tokens had to
+be paid for either way, so only the difference is waste.
+
+The counterpart to [cache saving](#cache-saving): one is a counterfactual,
+this is money actually spent. `message.diagnostics.cache_miss_reason` says
+why, and `aggregate.MISS_REASONS` puts it in words.
+
 ## Permission mode
 
 Which mode a message ran under — `auto`, `default` (approve each action),
@@ -99,6 +110,19 @@ Sessions that never record one stay `scan.UNKNOWN_MODE` — about 37% of
 messages but only ~10% of spend, since they are mostly older and cheaper.
 That bucket is displayed rather than filtered: dropping it would
 renormalise the rest into looking like the whole picture.
+
+## Trivia
+
+The figures about the *shape* of the work rather than its size: tool calls
+per reply, the modal hour, the weekend share, the priciest single message,
+refused tool calls, and context injections. Measured, none of it
+actionable, so it lives in one line at the bottom rather than taking a
+panel each.
+
+"Context injections" are what the harness pushes into the conversation —
+task reminders, skill listings, tool deltas. Deliberately not called
+"attachments": only ~6% are a file anybody pasted, and the tool and
+instruction ones are what invalidate the prompt cache.
 
 ## Machine time
 

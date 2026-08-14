@@ -60,3 +60,13 @@ def local_day(ts: str) -> str:
     """
     moment = instant(ts)
     return moment.astimezone().date().isoformat() if moment is not None else ""
+
+
+def local_hour(ts: str) -> int:
+    """Hour of the local day a transcript timestamp falls in, or -1.
+
+    Same UTC-to-local conversion as local_day, for the same reason: a
+    message at 23:40 local belongs to that evening, not to the UTC one.
+    """
+    moment = instant(ts)
+    return moment.astimezone().hour if moment is not None else -1

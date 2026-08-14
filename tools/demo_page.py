@@ -59,6 +59,15 @@ SKILLS = [
     ("code-review", 12),
     ("systematic-debugging", 9),
 ]
+EFFORTS = (("xhigh", 68), ("(none)", 20), ("high", 8), ("max", 4))
+BRANCHES = (("main", 30), ("feature/checkout", 18), ("fix/auth-token", 14),
+            ("worktree-billing", 12), ("release/2.4", 9), ("spike/vectors", 8),
+            ("docs/onboarding", 5), ("hotfix/rate-limit", 4))
+MCP_SERVERS = (("", 82), ("browser", 7), ("database", 6), ("issue-tracker", 3),
+               ("design", 2))
+MISS_REASONS = (("", 88), ("system_changed", 7), ("tools_changed", 3),
+                ("messages_changed", 2))
+
 MODES = (
     ("auto", 78),
     ("(not recorded)", 11),
@@ -157,6 +166,15 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                         rng.uniform(8.0, 240.0) if rng.random() < 0.12 else 0.0
                     ),
                     mode=_weighted(rng, MODES),
+                    effort=_weighted(rng, EFFORTS),
+                    branch=_weighted(rng, BRANCHES),
+                    mcp_server=_weighted(rng, MCP_SERVERS),
+                    cache_miss_reason=(miss := _weighted(rng, MISS_REASONS)),
+                    cache_missed_tokens=(rng.randint(40_000, 400_000) if miss else 0),
+                    stop_reason=("tool_use" if rng.random() < 0.93 else "end_turn"),
+                    hour=stamp.hour,
+                    denials=(1 if rng.random() < 0.006 else 0),
+                    injections=(1 if rng.random() < 0.22 else 0),
                 )
             )
 
