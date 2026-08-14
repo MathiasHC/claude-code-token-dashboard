@@ -118,6 +118,27 @@ zero and the authors withdrew the design.
 
 So the page says **worked**, never **saved**, and a test enforces the wording.
 
-Rows written before this column existed read back as zero. That understates
-history rather than inventing it: those gaps were never recorded and cannot be
-recovered without re-reading every transcript from the top.
+## Upgrading an existing database
+
+Rows written before these columns existed read back as **zero**. That
+understates history rather than inventing it — those gaps were never
+recorded.
+
+Re-scanning does not fix it. The store is insert-only (`INSERT OR IGNORE` on
+the message id), so a second pass over the same transcripts leaves existing
+rows untouched by design. That is the property that makes re-scanning safe
+and idempotent, and it is worth more than an automatic backfill.
+
+To backfill, delete the database and let it rebuild:
+
+```bash
+rm ~/.claude-token-dashboard/history.db
+```
+
+Nothing is lost — every figure the dashboard shows is derived from the
+transcripts, which are the source of truth. A full re-scan of a
+17,000-record history takes about four seconds.
+
+Until you do, the machine-time cards will show what has been ingested since
+the upgrade, and **WAITING ON YOU** will be absent entirely while every row
+still reads zero.
