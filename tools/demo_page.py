@@ -135,6 +135,14 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                     speed="standard",
                     is_subagent=rng.random() < 0.33,
                     source=_weighted(rng, SOURCES),
+                    # Machine time per message. Shaped like the real thing:
+                    # on a 71,000-record history 88% of gaps were under ten
+                    # seconds, with a thin tail of long tool runs. A uniform
+                    # draw would make the demo's total wrong by ~3x.
+                    work_seconds=(
+                        rng.uniform(1.5, 9.0) if rng.random() < 0.88
+                        else rng.uniform(9.0, 240.0)
+                    ),
                 )
             )
 

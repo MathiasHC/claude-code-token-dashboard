@@ -451,6 +451,8 @@ def _golden_data() -> DashboardData:
             subagent_cost=434.56,
             avg_cost_per_message=2.05,
             avg_cost_per_session=41.15,
+            worked_seconds=115_200.0,
+            subagent_worked_seconds=37_800.0,
             footprint=Footprint(kwh=2.4, litres=8.7, g_co2e=884.0),
         ),
     )

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from html import escape
 
-from . import ranges
+from . import ranges, scan
 from .models import Bar, DashboardData, RangeView
 
 BAR_COLOURS = ("#58a6ff", "#d29922", "#3fb950", "#8b949e", "#a371f7")
@@ -91,6 +91,13 @@ table.daily { position:relative; z-index:1; }
 .col.today { background:#58a6ff; }
 .titlebar .live { float:right; letter-spacing:0; margin-right:14px; color:#e6edf3; }
 .dscale { font-size:10px; color:#8b949e; }
+
+/* Machine time. One line, same chrome as the plan band, because it is the
+   same kind of statement: a single measured fact with its qualifiers. */
+.workrow { background:#161b22; border:1px solid #30363d; padding:6px 10px;
+           margin-top:5px; font-size:13px; color:#8b949e; }
+.workrow .amount { font-size:18px; font-weight:bold; color:#e6edf3; }
+.workrow .how { float:right; font-size:10px; color:#6e7681; }
 
 /* The footprint strip. Four line drawings across the bottom right, each
    animated by cross-fading a few hand-drawn frames — a flipbook.
@@ -388,6 +395,57 @@ def _plan_comparison(data: DashboardData) -> str:
     )
 
 
+def _duration(seconds: float) -> str:
+    """A span in at most two units. "4d 14h" beats "4d 14h 21m 29s" on a
+    display read from across a room, and the third unit is noise at that
+    scale anyway."""
+    total = int(seconds)
+    if total <= 0:
+        return "0s"
+    days, rest = divmod(total, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    if minutes:
+        return f"{minutes}m {secs}s" if secs else f"{minutes}m"
+    return f"{secs}s"
+
+
+def _worked_band(view: RangeView) -> str:
+    """How long the machine was actually working, for the selected range.
+
+    This is measured, not modelled — the one number near the footprint cards
+    that carries no error bar worth speaking of. It is *not* time saved:
+    that requires a counterfactual nothing in the transcripts can supply.
+    The wording says "worked" and never "saved" for that reason.
+
+    Agents run in parallel, so this sums past wall-clock time. Saying so is
+    the difference between a true statement and an impressive one.
+    """
+    if view.worked_seconds <= 0:
+        return ""
+    parts = [f'<span class="amount">{_duration(view.worked_seconds)}</span> of machine time']
+    if view.subagent_worked_seconds > 0:
+        parts.append(
+            f"{_duration(view.subagent_worked_seconds)} of it subagents "
+            f"({_pct(view.subagent_worked_share)}), running in parallel"
+        )
+    days = view.active_day_count
+    if days:
+        parts.append(f"{view.worked_seconds / 3600 / days:.1f} h per active day")
+    return (
+        f'<div class="workrow"><span class="how">measured from transcript '
+        f"timestamps &middot; gaps over "
+        f"{int(scan.MAX_WORK_GAP_SECONDS / 60)} min counted as idle &middot; "
+        "not a measure of time saved</span>"
+        f"AI WORKED &middot; {escape(view.label)} &nbsp; "
+        f'{" &middot; ".join(parts)}</div>'
+    )
+
+
 def _one_sig_fig(value: float, unit: str, small_unit: str, factor: float) -> str:
     """A quantity at one significant figure, in whichever unit reads better.
 
@@ -675,6 +733,7 @@ def render(
 <table class="grid"><tbody>
 <tr><td><h2>{_daily_heading(view)}</h2>{_daily(view, data.today_day)}</td></tr>
 </tbody></table>
+{_worked_band(view)}
 {_footprint_note(view)}
 </body></html>
 """

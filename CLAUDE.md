@@ -86,6 +86,11 @@ re-litigated are in `docs/adr/`.
   the panel to admit which window it is showing, which is how the bands ended
   up unlabelled and the DAILY heading ended up quoting a window it had not
   measured.
+- **Machine time is measured; the footprint is modelled.** Keep them
+  distinct on the page and in the code. `worked_seconds` comes from
+  transcript timestamps and carries no error bar worth speaking of; it must
+  never be described as time *saved*, which is a different and unanswerable
+  question. See `docs/machine-time.md`.
 - **The footprint estimate stays modest on purpose.** One significant
   figure, an inline caveat, no model leaderboard, and none of the framings
   `tests/test_footprint.py` forbids. It is good to an order of magnitude and

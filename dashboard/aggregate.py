@@ -193,6 +193,7 @@ def build(
     # regardless of which range the panels below are showing.
     per_day_all: dict[str, float] = defaultdict(float)
     main_cost = subagent_cost = 0.0
+    worked = subagent_worked = 0.0
     reads = 0
     cache_saved = 0.0
     # Raw token counts inside the range, for the footprint estimate. Kept
@@ -243,8 +244,10 @@ def build(
 
         if record.is_subagent:
             subagent_cost += value
+            subagent_worked += record.work_seconds
         else:
             main_cost += value
+        worked += record.work_seconds
         reads += record.cache_read_tokens
         tokens["output"] += record.output_tokens
         tokens["input"] += record.input_tokens
@@ -295,6 +298,8 @@ def build(
         cache_read_tokens=reads,
         avg_cost_per_message=(grand_total / scoped_messages if scoped_messages else 0.0),
         avg_cost_per_session=(grand_total / len(by_session) if by_session else 0.0),
+        worked_seconds=worked,
+        subagent_worked_seconds=subagent_worked,
         # Every token counts here, priced or not: an unpriced model still
         # drew power. This is the one figure on the page that does not go to
         # zero when a rate is missing.

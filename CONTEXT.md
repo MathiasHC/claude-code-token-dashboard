@@ -83,6 +83,23 @@ number of bars in the daily chart. Distinct from the *width* of a window — a
 30-day range with three active days plots three bars, and saying "last 3 days"
 about it is wrong.
 
+## Machine time
+
+How long the model and its tools were actually working —
+`RangeView.worked_seconds`, measured rather than modelled. A transcript
+records one timestamp per message and no durations, so the unit is the gap
+between consecutive records: model generation plus whatever tool ran in
+between. A gap ending at a **human turn** is the person thinking and is
+excluded; gaps above `scan.MAX_WORK_GAP_SECONDS` are dropped as idle rather
+than clamped, because clamping invents time.
+
+Summed across agents, so parallel subagents add past wall-clock — the page
+says so rather than quoting the larger number bare.
+
+Deliberately **not** "time saved". That needs a counterfactual nothing in the
+transcripts can supply, and the research is clear it is not derivable at all;
+see [docs/machine-time.md](docs/machine-time.md).
+
 ## Footprint
 
 Modelled energy, water and carbon for the tokens in a range —

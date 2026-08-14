@@ -37,6 +37,11 @@ class UsageRecord(NamedTuple):
     #: "code" is the default so records predating the multi-source scan, and
     #: every existing row in an old database, read back as Claude Code.
     source: str = "code"
+    #: Seconds the machine spent producing this message: model generation
+    #: plus any tool runs since the last message, excluding time spent
+    #: waiting for a human. See scan.MAX_WORK_GAP_SECONDS for what is
+    #: counted and what is discarded as idle.
+    work_seconds: float = 0.0
 
 
 class Plan(NamedTuple):
@@ -128,6 +133,10 @@ class RangeView:
     cache_read_tokens: int = 0
     avg_cost_per_message: float = 0.0
     avg_cost_per_session: float = 0.0
+    #: Seconds the machine spent working inside this range, summed across
+    #: agents — so parallel subagents add up beyond wall-clock time.
+    worked_seconds: float = 0.0
+    subagent_worked_seconds: float = 0.0
     #: Modelled energy/water/carbon for the tokens in this range. Order of
     #: magnitude only — see dashboard/footprint.py for why.
     footprint: Footprint = EMPTY_FOOTPRINT
@@ -136,6 +145,10 @@ class RangeView:
     def subagent_share(self) -> float:
         total = self.main_cost + self.subagent_cost
         return self.subagent_cost / total if total else 0.0
+
+    @property
+    def subagent_worked_share(self) -> float:
+        return self.subagent_worked_seconds / self.worked_seconds if self.worked_seconds else 0.0
 
     @property
     def active_day_count(self) -> int:
