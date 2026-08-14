@@ -97,12 +97,18 @@ table.daily { position:relative; z-index:1; }
    the quiet part and the figure is what carries across a room. */
 table.cards { width:100%; table-layout:fixed; border-collapse:separate;
               border-spacing:5px; margin-top:1px; }
-td.card { background:#161b22; border:1px solid #30363d; padding:7px 4px 6px 4px;
+td.card { background:#161b22; border:1px solid #30363d; padding:11px 6px 10px 6px;
           text-align:center; vertical-align:top; }
-.cardlabel { font-size:12px; letter-spacing:1.5px; color:#8b949e; margin-top:3px;
+.cardlabel { font-size:12px; letter-spacing:1.5px; color:#8b949e; margin-top:4px;
              white-space:nowrap; }
-.cardvalue { font-size:16px; color:#e6edf3; margin-top:1px; white-space:nowrap; }
+.cardvalue { font-size:20px; color:#e6edf3; margin-top:2px; white-space:nowrap; }
 .cardnote { font-size:10px; color:#6e7681; text-align:center; margin-top:3px; }
+/* The machine-time caption sits between the two card rows rather than under
+   the last one, so it needs the same chrome to read as part of the stack
+   instead of as a stray line. Full width on purpose: it qualifies all four
+   cards above it, and boxing it per-card would imply otherwise. */
+.cardnote.framed { background:#161b22; border:1px solid #30363d;
+                   padding:6px 10px; font-size:11px; margin-top:5px; }
 
 /* The footprint strip. Four line drawings across the bottom right, each
    animated by cross-fading a few hand-drawn frames — a flipbook.
@@ -442,7 +448,7 @@ def _worked_band(view: RangeView) -> str:
     )
     return (
         f'<table class="cards" id="worked"><tbody><tr>{cells}</tr></tbody></table>'
-        f'<div class="cardnote">AI WORKED &middot; {escape(view.label)} '
+        f'<div class="cardnote framed">AI WORKED &middot; {escape(view.label)} '
         "&middot; measured from transcript timestamps &middot; gaps over "
         f"{int(scan.MAX_WORK_GAP_SECONDS / 60)} min counted as idle "
         "&middot; parallel agents summed, so this exceeds wall-clock "
