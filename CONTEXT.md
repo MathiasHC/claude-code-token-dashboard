@@ -83,6 +83,46 @@ number of bars in the daily chart. Distinct from the *width* of a window — a
 30-day range with three active days plots three bars, and saying "last 3 days"
 about it is wrong.
 
+## Permission mode
+
+Which mode a message ran under — `auto`, `default` (approve each action),
+`plan`, `acceptEdits`, `bypassPermissions`. Shown as the BY MODE panel.
+
+Assistant messages never carry it. It arrives as its own record
+(`{"type": "permission-mode", "permissionMode": ...}`) and on some user
+turns, neither of which has a timestamp, so `scan` tracks it as state in
+file order and stamps the messages that follow. Measured across 663 real
+transcripts, a session that records a mode does so before its first
+assistant message, so nothing inside a covered session is misattributed.
+
+Sessions that never record one stay `scan.UNKNOWN_MODE` — about 37% of
+messages but only ~10% of spend, since they are mostly older and cheaper.
+That bucket is displayed rather than filtered: dropping it would
+renormalise the rest into looking like the whole picture.
+
+## Machine time
+
+How long the model and its tools were actually working —
+`RangeView.worked_seconds`, measured rather than modelled. A transcript
+records one timestamp per message and no durations, so the unit is the gap
+between consecutive records: model generation plus whatever tool ran in
+between. A gap ending at a **human turn** is the person thinking and is
+excluded; gaps above `scan.MAX_WORK_GAP_SECONDS` are dropped as idle rather
+than clamped, because clamping invents time.
+
+Summed across agents, so parallel subagents add past wall-clock — the page
+says so rather than quoting the larger number bare.
+
+`waited_seconds` is the mirror image: gaps that *do* end at a human turn,
+capped more generously at `scan.MAX_WAIT_GAP_SECONDS`. Between them they
+cover every second somebody was present. Gaps above either threshold belong
+to neither and are not shown, since an "away" figure would be an artefact of
+where the thresholds sit.
+
+Deliberately **not** "time saved". That needs a counterfactual nothing in the
+transcripts can supply, and the research is clear it is not derivable at all;
+see [docs/machine-time.md](docs/machine-time.md).
+
 ## Footprint
 
 Modelled energy, water and carbon for the tokens in a range —

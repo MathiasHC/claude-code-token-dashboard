@@ -27,7 +27,10 @@ CREATE TABLE IF NOT EXISTS usage (
   cache_write_1h    INTEGER NOT NULL DEFAULT 0,
   speed             TEXT,
   is_subagent       INTEGER NOT NULL DEFAULT 0,
-  source            TEXT NOT NULL DEFAULT 'code'
+  source            TEXT NOT NULL DEFAULT 'code',
+  work_seconds      REAL    NOT NULL DEFAULT 0,
+  wait_seconds      REAL    NOT NULL DEFAULT 0,
+  mode              TEXT    NOT NULL DEFAULT '(not recorded)'
 );
 CREATE INDEX IF NOT EXISTS usage_day ON usage(day);
 
@@ -64,6 +67,9 @@ _FIELDS = (
     "speed",
     "is_subagent",
     "source",
+    "work_seconds",
+    "wait_seconds",
+    "mode",
 )
 _COLUMNS = ", ".join(_FIELDS)
 _PLACEHOLDERS = ",".join("?" * len(_FIELDS))
@@ -106,6 +112,23 @@ class Store:
         if "source" not in existing:
             self._conn.execute(
                 "ALTER TABLE usage ADD COLUMN source TEXT NOT NULL DEFAULT 'code'"
+            )
+        # Machine time per message. Rows written before this column existed
+        # get 0, which understates history rather than inventing it: the
+        # gaps that produced those rows were never recorded and cannot be
+        # recovered without re-reading every transcript from the top.
+        if "work_seconds" not in existing:
+            self._conn.execute(
+                "ALTER TABLE usage ADD COLUMN work_seconds REAL NOT NULL DEFAULT 0"
+            )
+        if "wait_seconds" not in existing:
+            self._conn.execute(
+                "ALTER TABLE usage ADD COLUMN wait_seconds REAL NOT NULL DEFAULT 0"
+            )
+        if "mode" not in existing:
+            self._conn.execute(
+                "ALTER TABLE usage ADD COLUMN mode TEXT NOT NULL "
+                "DEFAULT '(not recorded)'"
             )
         # Incremental reads. Existing rows get offset 0 and an empty head,
         # which _resume_offset treats as "re-read this once" — the next pass

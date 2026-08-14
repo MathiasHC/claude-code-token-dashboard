@@ -154,6 +154,7 @@ def test_page_shows_every_panel_heading(page):
         "BY MODEL",
         "BY PROJECT",
         "BY SKILL",
+        "BY MODE &middot;",
         "TOP SESSIONS",
         "DAILY",
     ):
@@ -451,6 +452,8 @@ def _golden_data() -> DashboardData:
             subagent_cost=434.56,
             avg_cost_per_message=2.05,
             avg_cost_per_session=41.15,
+            worked_seconds=115_200.0,
+            subagent_worked_seconds=37_800.0,
             footprint=Footprint(kwh=2.4, litres=8.7, g_co2e=884.0),
         ),
     )
@@ -490,8 +493,8 @@ def test_source_band_is_omitted_when_there_is_no_data():
 
 
 def test_bands_sit_side_by_side_to_protect_the_vertical_budget():
-    """The iPad's first screen is 748px. Stacking DELEGATION above BY SOURCE
-    costs ~60px and pushes the daily chart off it, so both must share one row."""
+    """Stacking the bands costs ~60px each and pushes the daily chart off the
+    first screen, so all of them share one row."""
     records = [
         rec("m1", "2026-07-30"),
         rec("m2", "2026-07-30", is_subagent=True, source="cowork"),
@@ -505,7 +508,7 @@ def test_bands_sit_side_by_side_to_protect_the_vertical_budget():
 
 def test_a_lone_band_spans_the_full_width_rather_than_leaving_a_hole():
     """Delegation needs main+subagent cost; a records set with neither leaves
-    only the source band, which must not render as a half-width cell."""
+    only the source band, which must not render as a third-width cell."""
     data = _bare_data(by_source=[Bar(label="Claude Code", cost=5.0, share=1.0)])
     out = render_html.render(data)
     assert 'colspan="2"' in out

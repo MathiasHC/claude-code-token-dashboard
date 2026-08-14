@@ -59,6 +59,14 @@ SKILLS = [
     ("code-review", 12),
     ("systematic-debugging", 9),
 ]
+MODES = (
+    ("auto", 78),
+    ("(not recorded)", 11),
+    ("default", 8),
+    ("plan", 2),
+    ("acceptEdits", 1),
+)
+
 SOURCES = [("code", 86), ("cowork", 14)]
 
 SESSION_TITLES = [
@@ -135,6 +143,20 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                     speed="standard",
                     is_subagent=rng.random() < 0.33,
                     source=_weighted(rng, SOURCES),
+                    # Machine time per message. Shaped like the real thing:
+                    # on a 71,000-record history 88% of gaps were under ten
+                    # seconds, with a thin tail of long tool runs. A uniform
+                    # draw would make the demo's total wrong by ~3x.
+                    work_seconds=(
+                        rng.uniform(1.5, 9.0) if rng.random() < 0.88
+                        else rng.uniform(9.0, 240.0)
+                    ),
+                    # Most messages are mid-turn and nobody is waiting; the
+                    # ones that follow a human turn carry the whole wait.
+                    wait_seconds=(
+                        rng.uniform(8.0, 240.0) if rng.random() < 0.12 else 0.0
+                    ),
+                    mode=_weighted(rng, MODES),
                 )
             )
 

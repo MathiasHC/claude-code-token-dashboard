@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from .dates import local_day
+from .dates import instant, local_day
 from .models import UsageRecord
 
 WORKTREE_RE = re.compile(r"^(?P<parent>.*?)/\.claude/worktrees/")
@@ -23,6 +23,41 @@ DEFAULT_PATTERN = "**/*.jsonl"
 #: last time. Transcripts are append-only, so an unchanged prefix means the
 #: bytes before `offset` cannot have moved and it is safe to resume from it.
 HEAD_BYTES = 4096
+
+#: Longest gap between two records still counted as the machine working.
+#:
+#: A transcript records one timestamp per message and no durations, so the
+#: only measurable unit of machine time is the gap between consecutive
+#: records — model generation plus whatever tool ran in between.
+#:
+#: Gaps above this are dropped rather than clamped. Clamping was tried and
+#: it *invents* time: on a real 71,000-record history, 158 gaps longer than
+#: half an hour summed to 124 days of session-left-open idle, and clamping
+#: them to the cap would have added ~79 hours of work that never happened.
+#: Dropping them costs the tail of genuinely long tool runs, which is the
+#: cheaper error. 98.6% of real gaps are under a minute; the measured total
+#: moves from 74h to 169h as this constant goes from 60s to 1800s, so it is
+#: the single assumption the whole figure rests on.
+MAX_WORK_GAP_SECONDS = 300.0
+
+#: Longest gap ending at a human turn still counted as the person being
+#: there. Longer than MAX_WORK_GAP_SECONDS on purpose: reading a long answer
+#: and composing a reply legitimately takes minutes, where a model turn that
+#: takes five is already an outlier. Above this nobody is at the keyboard,
+#: and the seconds belong to neither side of the clock.
+MAX_WAIT_GAP_SECONDS = 900.0
+
+#: Assistant messages never carry the permission mode. It arrives as its own
+#: record — `{"type": "permission-mode", "permissionMode": ...}` — and on
+#: some user turns, with no timestamp on either. So it is tracked as state in
+#: file order and stamped onto the messages that follow.
+#:
+#: Measured on 663 real transcripts: where a session records a mode at all it
+#: does so before its first assistant message (median and max both zero), so
+#: nothing inside a covered session is misattributed. What is not covered is
+#: whole sessions that never record one — 37% of messages — and those stay
+#: UNKNOWN_MODE rather than being assumed into the majority.
+UNKNOWN_MODE = "(not recorded)"
 
 
 class FileState(NamedTuple):
@@ -73,6 +108,27 @@ def session_title(raw: str) -> str:
 # `scan.local_day` is re-exported from .dates — see the import above. It is
 # how the rest of the package has always named this, but the parsing itself
 # belongs with the other timestamp handling rather than with the JSONL reader.
+
+
+def _is_human_turn(entry: dict, kind: str | None) -> bool:
+    """Whether this record is the person typing, rather than the machine.
+
+    Tool results come back as `user` records too — they are the agent
+    feeding itself — so the type alone does not separate them. A human turn
+    carries plain text; a tool result carries tool_result blocks. Meta
+    records are injected by the harness and are not somebody typing either.
+    """
+    if kind != "user" or entry.get("isMeta"):
+        return False
+    content = (entry.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return True
+    if isinstance(content, list):
+        return not any(
+            isinstance(block, dict) and block.get("type") == "tool_result"
+            for block in content
+        )
+    return False
 
 
 def _cache_writes(usage: dict) -> tuple[int, int]:
@@ -189,6 +245,14 @@ def scan(
             # and leave the offset mid-line for the next pass.
             end = chunk.rfind(b"\n") + 1
             head = _digest(handle, min(HEAD_BYTES, start + end))
+        # Per file: transcripts are one conversation each, so machine time
+        # never spans two of them. Resuming mid-file starts with no previous
+        # moment, which drops one gap and is not worth carrying state for.
+        previous_moment = None
+        pending_work = 0.0
+        pending_wait = 0.0
+        last_emitted = None
+        mode = UNKNOWN_MODE
         for raw in chunk[:end].split(b"\n"):
             if not raw.strip():
                 continue
@@ -203,6 +267,31 @@ def scan(
 
             session_id = entry.get("sessionId") or entry.get("session_id") or ""
             kind = entry.get("type")
+
+            declared = entry.get("permissionMode")
+            if declared:
+                mode = str(declared)
+
+            # Machine time, accumulated across every record type. A gap that
+            # ends at a human turn is the human thinking and is discarded;
+            # everything else is the model generating or a tool running.
+            # Tool results are not emitted as records, so their gaps pile up
+            # in `pending` and land on the assistant message that follows.
+            moment = instant(entry.get("timestamp") or "")
+            if moment is not None:
+                if previous_moment is not None:
+                    gap = (moment - previous_moment).total_seconds()
+                    # A gap ending at a human turn is the human thinking,
+                    # so it is not added — but anything already pending is
+                    # machine work that genuinely happened and must survive
+                    # to be attributed to the next message. Zeroing it here
+                    # silently dropped 10.9 hours on a real history.
+                    if _is_human_turn(entry, kind):
+                        if 0 < gap <= MAX_WAIT_GAP_SECONDS:
+                            pending_wait += gap
+                    elif 0 < gap <= MAX_WORK_GAP_SECONDS:
+                        pending_work += gap
+                previous_moment = moment
 
             if kind == "user" and not entry.get("isMeta") and session_id not in titles:
                 # Only when reading from the top: resuming mid-file, the
@@ -244,8 +333,25 @@ def scan(
                     speed=usage.get("speed"),
                     is_subagent=bool(entry.get("isSidechain")),
                     source=source,
+                    work_seconds=pending_work,
+                    wait_seconds=pending_wait,
+                    mode=mode,
                 )
             )
+            last_emitted = len(records) - 1
+            pending_work = 0.0
+            pending_wait = 0.0
+        # Tool runs after the last message that carried usage have nowhere
+        # to land, because only usage-bearing messages become records. Give
+        # them to the last record this file produced rather than lose them:
+        # 4.8 hours were stranded this way across 441 real transcripts.
+        if (pending_work or pending_wait) and last_emitted is not None:
+            tail = records[last_emitted]
+            records[last_emitted] = tail._replace(
+                work_seconds=tail.work_seconds + pending_work,
+                wait_seconds=tail.wait_seconds + pending_wait,
+            )
+
         stats[key] = FileState(
             size=info.st_size, mtime=info.st_mtime, offset=start + end, head=head
         )

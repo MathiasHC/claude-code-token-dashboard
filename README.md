@@ -41,6 +41,16 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
+- **By permission mode** — how much ran on auto versus plan, accept-edits or
+  approve-each-action. Tracked as state through the transcript, since the
+  messages themselves do not carry it. Sessions that never recorded a mode
+  are shown as their own slice rather than folded into the majority.
+- **Where the clock went** — four cards: machine time (model generating plus
+  tools running), how much of it was subagents in parallel, how long it spent
+  waiting on you, and how many sessions that was spread over. Measured from
+  transcript timestamps rather than modelled. Explicitly *not* time saved —
+  that needs a counterfactual the transcripts cannot supply. Method in
+  [docs/machine-time.md](docs/machine-time.md).
 - **A rough environmental estimate** — modelled kWh, litres of water and
   kg CO2e for the tokens in view, plus how many kettles that would boil,
   along the bottom. Each has a small animated line drawing: a power station
@@ -117,14 +127,17 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **843px tall**, measured
+The page is laid out for a width of **1024** and is **1014px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
-the daily chart fits a 1024×768 screen; the four footprint cards at the
-bottom sit just below the fold and need a short scroll. That was a deliberate
-trade — the drawings are only worth having if they are big enough to read,
-and at 34px they were not. Drop `ICON_PX` in `render_html.py` and remove the
-card labels if you would rather have the fold back; that measures 815px, so
-it does not buy the fold either.
+the daily chart fits a 1024×768 screen; the two card rows —
+machine time and footprint — sit below the fold and need a short scroll.
+
+That is a deliberate trade rather than an oversight. The drawings are only
+worth having if they are big enough to read, and at 34px they were not —
+a compact variant measures 815px, so shrinking them sacrifices the
+legibility without buying the fold back. If you want the fold, the honest
+levers are `DAILY_CHART_HEIGHT_PX` and merging the two bands, not the
+cards.
 
 ### 2. A Raspberry Pi driving a small screen
 
