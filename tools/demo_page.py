@@ -143,6 +143,11 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                         rng.uniform(1.5, 9.0) if rng.random() < 0.88
                         else rng.uniform(9.0, 240.0)
                     ),
+                    # Most messages are mid-turn and nobody is waiting; the
+                    # ones that follow a human turn carry the whole wait.
+                    wait_seconds=(
+                        rng.uniform(8.0, 240.0) if rng.random() < 0.12 else 0.0
+                    ),
                 )
             )
 

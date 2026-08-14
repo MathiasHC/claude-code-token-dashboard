@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS usage (
   speed             TEXT,
   is_subagent       INTEGER NOT NULL DEFAULT 0,
   source            TEXT NOT NULL DEFAULT 'code',
-  work_seconds      REAL    NOT NULL DEFAULT 0
+  work_seconds      REAL    NOT NULL DEFAULT 0,
+  wait_seconds      REAL    NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS usage_day ON usage(day);
 
@@ -66,6 +67,7 @@ _FIELDS = (
     "is_subagent",
     "source",
     "work_seconds",
+    "wait_seconds",
 )
 _COLUMNS = ", ".join(_FIELDS)
 _PLACEHOLDERS = ",".join("?" * len(_FIELDS))
@@ -116,6 +118,10 @@ class Store:
         if "work_seconds" not in existing:
             self._conn.execute(
                 "ALTER TABLE usage ADD COLUMN work_seconds REAL NOT NULL DEFAULT 0"
+            )
+        if "wait_seconds" not in existing:
+            self._conn.execute(
+                "ALTER TABLE usage ADD COLUMN wait_seconds REAL NOT NULL DEFAULT 0"
             )
         # Incremental reads. Existing rows get offset 0 and an empty head,
         # which _resume_offset treats as "re-read this once" — the next pass

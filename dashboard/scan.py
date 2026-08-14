@@ -40,6 +40,13 @@ HEAD_BYTES = 4096
 #: the single assumption the whole figure rests on.
 MAX_WORK_GAP_SECONDS = 300.0
 
+#: Longest gap ending at a human turn still counted as the person being
+#: there. Longer than MAX_WORK_GAP_SECONDS on purpose: reading a long answer
+#: and composing a reply legitimately takes minutes, where a model turn that
+#: takes five is already an outlier. Above this nobody is at the keyboard,
+#: and the seconds belong to neither side of the clock.
+MAX_WAIT_GAP_SECONDS = 900.0
+
 
 class FileState(NamedTuple):
     """What we knew about a transcript after the last pass.
@@ -231,6 +238,7 @@ def scan(
         # moment, which drops one gap and is not worth carrying state for.
         previous_moment = None
         pending_work = 0.0
+        pending_wait = 0.0
         last_emitted = None
         for raw in chunk[:end].split(b"\n"):
             if not raw.strip():
@@ -261,7 +269,10 @@ def scan(
                     # machine work that genuinely happened and must survive
                     # to be attributed to the next message. Zeroing it here
                     # silently dropped 10.9 hours on a real history.
-                    if not _is_human_turn(entry, kind) and 0 < gap <= MAX_WORK_GAP_SECONDS:
+                    if _is_human_turn(entry, kind):
+                        if 0 < gap <= MAX_WAIT_GAP_SECONDS:
+                            pending_wait += gap
+                    elif 0 < gap <= MAX_WORK_GAP_SECONDS:
                         pending_work += gap
                 previous_moment = moment
 
@@ -306,18 +317,21 @@ def scan(
                     is_subagent=bool(entry.get("isSidechain")),
                     source=source,
                     work_seconds=pending_work,
+                    wait_seconds=pending_wait,
                 )
             )
             last_emitted = len(records) - 1
             pending_work = 0.0
+            pending_wait = 0.0
         # Tool runs after the last message that carried usage have nowhere
         # to land, because only usage-bearing messages become records. Give
         # them to the last record this file produced rather than lose them:
         # 4.8 hours were stranded this way across 441 real transcripts.
-        if pending_work > 0 and last_emitted is not None:
+        if (pending_work or pending_wait) and last_emitted is not None:
             tail = records[last_emitted]
             records[last_emitted] = tail._replace(
-                work_seconds=tail.work_seconds + pending_work
+                work_seconds=tail.work_seconds + pending_work,
+                wait_seconds=tail.wait_seconds + pending_wait,
             )
 
         stats[key] = FileState(

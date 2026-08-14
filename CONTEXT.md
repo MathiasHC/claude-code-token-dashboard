@@ -96,6 +96,12 @@ than clamped, because clamping invents time.
 Summed across agents, so parallel subagents add past wall-clock — the page
 says so rather than quoting the larger number bare.
 
+`waited_seconds` is the mirror image: gaps that *do* end at a human turn,
+capped more generously at `scan.MAX_WAIT_GAP_SECONDS`. Between them they
+cover every second somebody was present. Gaps above either threshold belong
+to neither and are not shown, since an "away" figure would be an artefact of
+where the thresholds sit.
+
 Deliberately **not** "time saved". That needs a counterfactual nothing in the
 transcripts can supply, and the research is clear it is not derivable at all;
 see [docs/machine-time.md](docs/machine-time.md).

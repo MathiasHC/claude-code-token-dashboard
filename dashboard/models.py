@@ -42,6 +42,9 @@ class UsageRecord(NamedTuple):
     #: waiting for a human. See scan.MAX_WORK_GAP_SECONDS for what is
     #: counted and what is discarded as idle.
     work_seconds: float = 0.0
+    #: Seconds spent waiting for the person before this message: the gap
+    #: ending at their turn. The other side of the same clock.
+    wait_seconds: float = 0.0
 
 
 class Plan(NamedTuple):
@@ -137,6 +140,10 @@ class RangeView:
     #: agents — so parallel subagents add up beyond wall-clock time.
     worked_seconds: float = 0.0
     subagent_worked_seconds: float = 0.0
+    #: Seconds the machine spent waiting for the person.
+    waited_seconds: float = 0.0
+    #: Distinct sessions that carried spend inside this range.
+    sessions: int = 0
     #: Modelled energy/water/carbon for the tokens in this range. Order of
     #: magnitude only — see dashboard/footprint.py for why.
     footprint: Footprint = EMPTY_FOOTPRINT

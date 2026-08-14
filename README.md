@@ -41,11 +41,11 @@ layout before you have any history of your own.*
   input, and what caching saved you.
 - **By model, project, skill and session** — which models, repos, skills and
   individual pieces of work cost the most.
-- **How long AI actually worked** — machine time for the tokens in view:
-  model generating plus tools running, with the share that came from
-  subagents running in parallel. Measured from transcript timestamps rather
-  than modelled. It is explicitly *not* time saved — that needs a
-  counterfactual the transcripts cannot supply. Method in
+- **Where the clock went** — four cards: machine time (model generating plus
+  tools running), how much of it was subagents in parallel, how long it spent
+  waiting on you, and how many sessions that was spread over. Measured from
+  transcript timestamps rather than modelled. Explicitly *not* time saved —
+  that needs a counterfactual the transcripts cannot supply. Method in
   [docs/machine-time.md](docs/machine-time.md).
 - **A rough environmental estimate** — modelled kWh, litres of water and
   kg CO2e for the tokens in view, plus how many kettles that would boil,
@@ -123,10 +123,10 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **900px tall**, measured
+The page is laid out for a width of **1024** and is **920px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
-the daily chart fits a 1024×768 screen; the machine-time row and the four
-footprint cards sit below the fold and need a short scroll.
+the daily chart fits a 1024×768 screen; the two card rows —
+machine time and footprint — sit below the fold and need a short scroll.
 
 That is a deliberate trade rather than an oversight. The drawings are only
 worth having if they are big enough to read, and at 34px they were not —

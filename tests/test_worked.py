@@ -213,7 +213,7 @@ def test_the_panel_says_worked_and_never_saved():
     the transcripts cannot supply; time worked is arithmetic on timestamps."""
     out = render_html.render(aggregate.build([rec("m1", 7200)], {}, now=NOW))
     assert "AI WORKED" in out
-    assert "of machine time" in out
+    assert "MACHINE TIME" in out
     assert "not a measure of time saved" in out
     assert "saved" not in out.replace("not a measure of time saved", "")
 
@@ -221,8 +221,55 @@ def test_the_panel_says_worked_and_never_saved():
 def test_the_panel_admits_that_parallel_agents_are_summed():
     records = [rec("m1", 3600), rec("m2", 3600, is_subagent=True)]
     out = render_html.render(aggregate.build(records, {}, now=NOW))
-    assert "running in parallel" in out
-    assert "subagents" in out
+    assert "SUBAGENTS" in out
+    assert "parallel agents summed, so this exceeds wall-clock" in out
+
+
+def test_waiting_on_you_is_the_other_side_of_the_clock(tmp_path):
+    """A gap ending at a human turn is the person thinking. It is counted,
+    separately, rather than discarded — the page shows both halves."""
+    result = scan.scan(transcript(
+        tmp_path, human(0), assistant(10, "m1"), human(200), assistant(210, "m2"),
+    ))
+    assert sum(r.work_seconds for r in result.records) == pytest.approx(20)
+    assert sum(r.wait_seconds for r in result.records) == pytest.approx(190)
+
+
+def test_a_wait_longer_than_the_cap_means_nobody_was_there(tmp_path):
+    """Above MAX_WAIT_GAP_SECONDS the person has left, and the seconds
+    belong to neither side of the clock rather than to them."""
+    long_wait = scan.MAX_WAIT_GAP_SECONDS + 60
+    result = scan.scan(transcript(
+        tmp_path, human(0), assistant(10, "m1"), human(10 + long_wait), assistant(20 + long_wait, "m2"),
+    ))
+    assert sum(r.wait_seconds for r in result.records) == pytest.approx(0)
+
+
+def test_waiting_is_more_patient_than_working(tmp_path):
+    """Reading a long answer and composing a reply legitimately takes
+    minutes; a model turn that takes five is already an outlier."""
+    assert scan.MAX_WAIT_GAP_SECONDS > scan.MAX_WORK_GAP_SECONDS
+
+
+def test_the_cards_cover_work_subagents_waiting_and_sessions():
+    records = [rec("m1", 3600, wait_seconds=600),
+               rec("m2", 1800, wait_seconds=0, is_subagent=True, session_id="s2")]
+    out = render_html.render(aggregate.build(records, {}, now=NOW))
+    for label in ("MACHINE TIME", "SUBAGENTS", "WAITING ON YOU", "SESSIONS"):
+        assert label in out, label
+
+
+def test_sessions_are_counted_within_the_range():
+    records = [rec("m1", 60, session_id="a"), rec("m2", 60, session_id="b"),
+               rec("m3", 60, session_id="a")]
+    assert aggregate.build(records, {}, now=NOW).scoped.sessions == 2
+
+
+def test_a_card_is_omitted_when_its_figure_is_absent():
+    """No subagents means no subagent card, rather than a card reading 0s."""
+    out = render_html.render(aggregate.build([rec("m1", 3600)], {}, now=NOW))
+    assert "MACHINE TIME" in out
+    assert "SUBAGENTS" not in out
 
 
 def test_the_panel_states_how_it_was_measured():
@@ -233,7 +280,7 @@ def test_the_panel_states_how_it_was_measured():
 
 def test_the_panel_sits_above_the_footprint_cards():
     out = render_html.render(aggregate.build([rec("m1", 7200)], {}, now=NOW))
-    assert out.index('class="workrow"') < out.index('class="fpstrip"')
+    assert out.index('id="worked"') < out.index('id="footprint"')
 
 
 def test_no_panel_without_measured_time():

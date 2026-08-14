@@ -92,12 +92,17 @@ table.daily { position:relative; z-index:1; }
 .titlebar .live { float:right; letter-spacing:0; margin-right:14px; color:#e6edf3; }
 .dscale { font-size:10px; color:#8b949e; }
 
-/* Machine time. One line, same chrome as the plan band, because it is the
-   same kind of statement: a single measured fact with its qualifiers. */
-.workrow { background:#161b22; border:1px solid #30363d; padding:6px 10px;
-           margin-top:5px; font-size:13px; color:#8b949e; }
-.workrow .amount { font-size:18px; font-weight:bold; color:#e6edf3; }
-.workrow .how { float:right; font-size:10px; color:#6e7681; }
+/* One card style, shared by the machine-time row and the footprint row so
+   the two read as a pair rather than as two bolted-on strips. The label is
+   the quiet part and the figure is what carries across a room. */
+table.cards { width:100%; table-layout:fixed; border-collapse:separate;
+              border-spacing:5px; margin-top:1px; }
+td.card { background:#161b22; border:1px solid #30363d; padding:7px 4px 6px 4px;
+          text-align:center; vertical-align:top; }
+.cardlabel { font-size:12px; letter-spacing:1.5px; color:#8b949e; margin-top:3px;
+             white-space:nowrap; }
+.cardvalue { font-size:16px; color:#e6edf3; margin-top:1px; white-space:nowrap; }
+.cardnote { font-size:10px; color:#6e7681; text-align:center; margin-top:3px; }
 
 /* The footprint strip. Four line drawings across the bottom right, each
    animated by cross-fading a few hand-drawn frames — a flipbook.
@@ -108,20 +113,6 @@ table.daily { position:relative; z-index:1; }
    animation does not run at all, every frame after the first stays hidden
    and you are left with a static line drawing, which is a perfectly good
    outcome and the reason this approach was chosen over a GIF. */
-/* Four equal cards, matching the panel chrome above them so the row reads
-   as part of the page rather than as a badge strip bolted on. */
-table.fpstrip { width:100%; table-layout:fixed; border-collapse:separate;
-                border-spacing:5px; margin-top:1px; }
-td.fpcard { background:#161b22; border:1px solid #30363d; padding:7px 4px 6px 4px;
-            text-align:center; vertical-align:top; }
-/* The category leads at 12px and the figure sits under it at 16px, so the
-   card reads heading-then-number while the number stays the bigger thing.
-   Letter-spacing follows the uppercase category, not the figure — spaced
-   digits read as a serial number rather than as a quantity. */
-.fpvalue { font-size:12px; letter-spacing:1.5px; color:#8b949e; margin-top:3px;
-           white-space:nowrap; }
-.fplabel { font-size:16px; color:#e6edf3; margin-top:1px; white-space:nowrap; }
-.fpnote { font-size:10px; color:#6e7681; text-align:center; margin-top:3px; }
 .fpicon { display:block; margin:0 auto; }
 .fpf { opacity:0; }
 .fpf1 { opacity:1; -webkit-animation:fpcycle 1.5s steps(1,end) infinite;
@@ -415,34 +406,47 @@ def _duration(seconds: float) -> str:
 
 
 def _worked_band(view: RangeView) -> str:
-    """How long the machine was actually working, for the selected range.
+    """Where the clock went, for the selected range.
 
-    This is measured, not modelled — the one number near the footprint cards
-    that carries no error bar worth speaking of. It is *not* time saved:
-    that requires a counterfactual nothing in the transcripts can supply.
-    The wording says "worked" and never "saved" for that reason.
+    Measured, not modelled — the one row near the footprint cards that
+    carries no error bar worth speaking of. It is *not* time saved: that
+    needs a counterfactual nothing in the transcripts can supply, so the
+    wording says "machine time" and never "saved".
 
-    Agents run in parallel, so this sums past wall-clock time. Saying so is
-    the difference between a true statement and an impressive one.
+    The three spans are the three things a second can be: the machine
+    working, the machine waiting for you, or nobody there at all. The third
+    is not shown — gaps that long are dropped rather than attributed, and a
+    figure for "away" would be an artefact of the two thresholds rather
+    than a measurement.
     """
     if view.worked_seconds <= 0:
         return ""
-    parts = [f'<span class="amount">{_duration(view.worked_seconds)}</span> of machine time']
+    cards = [("MACHINE TIME", _duration(view.worked_seconds))]
     if view.subagent_worked_seconds > 0:
-        parts.append(
-            f"{_duration(view.subagent_worked_seconds)} of it subagents "
-            f"({_pct(view.subagent_worked_share)}), running in parallel"
+        cards.append(
+            (
+                f"SUBAGENTS &middot; {_pct(view.subagent_worked_share)}",
+                _duration(view.subagent_worked_seconds),
+            )
         )
-    days = view.active_day_count
-    if days:
-        parts.append(f"{view.worked_seconds / 3600 / days:.1f} h per active day")
+    if view.waited_seconds > 0:
+        cards.append(("WAITING ON YOU", _duration(view.waited_seconds)))
+    if view.sessions:
+        each = _duration(view.worked_seconds / view.sessions)
+        cards.append(("SESSIONS", f"{view.sessions:,} &middot; {each} each"))
+
+    cells = "".join(
+        f'<td class="card"><div class="cardlabel">{label}</div>'
+        f'<div class="cardvalue">{value}</div></td>'
+        for label, value in cards
+    )
     return (
-        f'<div class="workrow"><span class="how">measured from transcript '
-        f"timestamps &middot; gaps over "
-        f"{int(scan.MAX_WORK_GAP_SECONDS / 60)} min counted as idle &middot; "
-        "not a measure of time saved</span>"
-        f"AI WORKED &middot; {escape(view.label)} &nbsp; "
-        f'{" &middot; ".join(parts)}</div>'
+        f'<table class="cards" id="worked"><tbody><tr>{cells}</tr></tbody></table>'
+        f'<div class="cardnote">AI WORKED &middot; {escape(view.label)} '
+        "&middot; measured from transcript timestamps &middot; gaps over "
+        f"{int(scan.MAX_WORK_GAP_SECONDS / 60)} min counted as idle "
+        "&middot; parallel agents summed, so this exceeds wall-clock "
+        "&middot; not a measure of time saved</div>"
     )
 
 
@@ -603,14 +607,14 @@ def _footprint_note(view: RangeView) -> str:
     # ordering suits a number with an order-of-magnitude error bar: the card
     # says what is being counted first, and how much second.
     cells = "".join(
-        f'<td class="fpcard">{_icon(kind)}'
-        f'<div class="fpvalue">{label}</div>'
-        f'<div class="fplabel">{value}</div></td>'
+        f'<td class="card">{_icon(kind)}'
+        f'<div class="cardlabel">{label}</div>'
+        f'<div class="cardvalue">{value}</div></td>'
         for kind, value, label in items
     )
     return (
-        f'<table class="fpstrip"><tbody><tr>{cells}</tr></tbody></table>'
-        '<div class="fpnote">modelled from published research, not measured '
+        f'<table class="cards" id="footprint"><tbody><tr>{cells}</tr></tbody></table>'
+        '<div class="cardnote">modelled from published research, not measured '
         "&middot; order of magnitude only &middot; excludes training</div>"
     )
 

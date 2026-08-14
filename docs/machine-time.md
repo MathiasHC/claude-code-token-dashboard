@@ -3,8 +3,8 @@
 The dashboard shows a line like:
 
 ```
-AI WORKED · LAST 30 DAYS   1d 8h of machine time · 10h 27m of it subagents
-(32.3%), running in parallel · 1.1 h per active day
+MACHINE TIME   SUBAGENTS · 32.4%   WAITING ON YOU   SESSIONS
+    1d 1h            8h 7m             19h 58m      10 · 2h 30m each
 ```
 
 Unlike the [footprint estimate](footprint.md), this is **measured, not
@@ -62,15 +62,31 @@ and the ambiguity is real: some 15-minute gaps are genuine long tool runs — a
 multi-agent research workflow in this project took 26 minutes — while others
 are somebody making coffee.
 
+## The other side of the clock
+
+A gap ending at a human turn is the person reading and typing. It is counted
+separately as `wait_seconds` rather than discarded, and shown as **WAITING ON
+YOU**.
+
+Its threshold is deliberately more generous than the machine one —
+`MAX_WAIT_GAP_SECONDS` is 900s against 300s. Reading a long answer and
+composing a reply legitimately takes minutes, where a model turn that takes
+five is already an outlier.
+
+Above that threshold nobody is at the keyboard, and those seconds belong to
+neither side. The page does not show an "away" figure for exactly that
+reason: it would be an artefact of where the two thresholds happen to sit,
+not a measurement.
+
 ## Parallelism
 
 Agents run concurrently, so summing them exceeds wall-clock time. On the
 reference history the sum was 110 h against 76 h of real elapsed time, a
 **1.44× parallelism factor**.
 
-The page shows the sum and says "running in parallel" beside it, because the
-sum is the larger and more flattering number and quoting it bare would be
-misleading.
+The page shows the sum and says "parallel agents summed, so this exceeds
+wall-clock" underneath, because the sum is the larger and more flattering
+number and quoting it bare would be misleading.
 
 ## Accuracy
 
