@@ -81,10 +81,13 @@ GRID_G_CO2E_PER_KWH = 335
 #: Manufacturing the hardware, as a flat uplift on the operational total.
 EMBODIED_UPLIFT = 1.10
 
-#: Energy to boil a litre of water in a kettle: 4.18 kJ/kg·K x 85 K = 355 kJ,
-#: divided by ~90% element efficiency. Chosen as the equivalence because the
-#: arithmetic is checkable in five seconds by anyone who doubts it.
-KWH_PER_KETTLE_BOIL = 0.11
+#: Energy to brew a pot of coffee: 1.2 litres taken from 15 to 93 °C is
+#: 1.2 x 4.18 kJ/kg·K x 78 K = 391 kJ = 0.109 kWh, divided by ~85% brewer
+#: efficiency. Chosen as the equivalence for the same reason the kettle it
+#: replaced was: the arithmetic is checkable in five seconds by anyone who
+#: doubts it. Excludes the warming plate, which on a real machine can use
+#: more than the brew did — so this is a floor, not a full cup-to-cup cost.
+KWH_PER_COFFEE_POT = 0.128
 
 
 @dataclass(frozen=True)
@@ -96,8 +99,8 @@ class Footprint:
     g_co2e: float
 
     @property
-    def kettle_boils(self) -> float:
-        return self.kwh / KWH_PER_KETTLE_BOIL
+    def coffee_pots(self) -> float:
+        return self.kwh / KWH_PER_COFFEE_POT
 
     def __bool__(self) -> bool:
         return self.kwh > 0

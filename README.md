@@ -68,10 +68,10 @@ layout before you have any history of your own.*
   that needs a counterfactual the transcripts cannot supply. Method in
   [docs/machine-time.md](docs/machine-time.md).
 - **A rough environmental estimate** — modelled kWh, litres of water and
-  kg CO2e for the tokens in view, plus how many kettles that would boil,
-  along the bottom. Each has a small animated line drawing: a power station
+  kg CO2e for the tokens in view, plus how many pots of coffee that would
+  brew, along the bottom. Each has a small animated line drawing: a power station
   under a flickering bolt, a waterfall, a cow with a methane problem, and a
-  kettle coming to the boil. The animation is CSS keyframes cross-fading
+  coffee pot brewing. The animation is CSS keyframes cross-fading
   hand-drawn frames — no JavaScript, and it degrades to a static drawing on
   anything that will not animate. The estimate is good to about an order of
   magnitude and says so on the page; method and sources in

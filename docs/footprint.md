@@ -3,7 +3,7 @@
 The dashboard shows a line like:
 
 ```
-23 kWh · 85 L water · 8.6 kg CO2e · about 200 kettles boiled
+23 kWh · 85 L water · 8.6 kg CO2e · 200 pots of coffee
 modelled from published research, not measured · order of magnitude only · excludes training
 ```
 
@@ -50,7 +50,7 @@ gCO2e  = kWh × 335 × 1.10     (grid, plus embodied hardware)
 | Off-site water | 3.1 L/kWh | US average **consumption** (not the 43.8 L/kWh *withdrawal* figure) |
 | Grid carbon | 335 gCO2e/kWh | Location-based: Google fleet 345, Microsoft FY25 325 |
 | Embodied uplift | ×1.10 | ~10% of a location-based total |
-| Kettle boil | 0.11 kWh | 1 L × 4.18 kJ/kg·K × 85 K ÷ 0.9 efficiency |
+| Pot of coffee | 0.128 kWh | 1.2 L × 4.18 kJ/kg·K × 78 K ÷ 0.85 brewer efficiency; excludes the warming plate, so it is a floor |
 
 ## The weakest link
 
