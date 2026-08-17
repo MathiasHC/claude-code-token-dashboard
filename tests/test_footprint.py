@@ -128,20 +128,20 @@ def test_the_page_never_shows_more_than_one_significant_figure():
 
 
 @pytest.mark.parametrize(
-    "boils,expected",
+    "pots,expected",
     [
-        (0.1, "less than a kettle boiled"),
-        (0.5, "half a kettle boiled"),
-        (1.0, "1 kettle boiled"),
-        (3.4, "3 kettles boiled"),
-        (212.0, "200 kettles boiled"),
-        (2074.0, "2,000 kettles boiled"),
+        (0.1, "less than a pot"),
+        (0.5, "half a pot"),
+        (1.0, "1"),
+        (3.4, "3"),
+        (212.0, "200"),
+        (2074.0, "2,000"),
     ],
 )
-def test_the_equivalence_is_rounded_as_hard_as_everything_beside_it(boils, expected):
-    """"212 kettles" is three significant figures on a line that claims one,
-    and reads as a hundred times more precise than the model supports."""
-    assert render_html._kettles(boils) == expected
+def test_the_equivalence_is_rounded_as_hard_as_everything_beside_it(pots, expected):
+    """"212" is three significant figures on a card that claims one, and
+    reads as a hundred times more precise than the model supports."""
+    assert render_html._coffee_pots(pots) == expected
 
 
 def test_the_caveat_is_inline_and_not_behind_a_link():
@@ -255,7 +255,7 @@ def test_nothing_is_rendered_when_there_are_no_tokens():
     """An all-zero footprint row on a fresh install is noise, and '0 kWh'
     reads as a measurement of nothing rather than an absence of data."""
     out = render_html.render(aggregate.build([], {}, now=NOW))
-    assert "kettle" not in out
+    assert "coffee" not in out.lower()
     assert "kWh" not in out
 
 

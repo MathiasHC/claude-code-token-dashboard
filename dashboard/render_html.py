@@ -593,15 +593,20 @@ _ICONS = {
             '<path d="M19.9 17.5a1.95 1.95 0 1 0 .1 0"/>',
         ),
     ),
-    # A kettle with steam climbing off the spout.
-    "kettle": (
+    # A coffee carafe, brewing. Tapered glass body, lid, handle and a
+    # pour lip; the steam above it climbs across the three frames.
+    "coffee": (
         "#3fb950",
-        '<path d="M6.4 12.6h9.2v5.2a2 2 0 0 1-2 2H8.4a2 2 0 0 1-2-2z"/>'
-        '<path d="M8.6 12.6a2.6 2.6 0 0 1 4.8 0M15.6 14.2l2.8-1.8"/>',
+        '<path d="M8.2 4.6h7.6v1.9H8.2z"/>'
+        '<path d="M8.7 6.5L7.3 16.9a2.4 2.4 0 0 0 2.4 2.7h4.6a2.4 2.4 0 0 0 2.4-2.7'
+        'L15.3 6.5"/>'
+        '<path d="M8 5.2L6.5 4.4"/>'
+        '<path d="M16.9 9.6c2.1.5 2.6 1.9 2.6 3s-.7 2.3-2.2 2.7"/>'
+        '<path d="M7.7 13.4h8.6"/>',
         (
-            '<path d="M18.6 11c.9-.6.1-1.4 1-2"/>',
-            '<path d="M18.6 10c.9-.6.1-1.4 1-2M17 11.4c.7-.5.1-1.1.8-1.6"/>',
-            '<path d="M18.6 9c.9-.6.1-1.4 1-2M17 10.4c.7-.5.1-1.1.8-1.6"/>',
+            '<path d="M10.2 4.1c.9-.7.1-1.5 1-2.2"/>',
+            '<path d="M10.2 3.3c.9-.7.1-1.5 1-2.2M13.5 4.1c.7-.5.1-1.2.8-1.7"/>',
+            '<path d="M10.2 2.5c.9-.7.1-1.5 1-2.2M13.5 3.3c.7-.5.1-1.2.8-1.7"/>',
         ),
     ),
 }
@@ -632,18 +637,18 @@ def _icon(kind: str) -> str:
     )
 
 
-def _kettles(boils: float) -> str:
+def _coffee_pots(pots: float) -> str:
     """The equivalence, at the same one significant figure as everything else
-    beside it. "212 kettles" would be three, and would quietly claim the
-    model is a hundred times more precise than it is."""
-    if boils < 1:
-        return "half a kettle boiled" if boils >= 0.25 else "less than a kettle boiled"
-    if boils < 10:
-        rounded = round(boils)
+    beside it. "212" would be three, and would quietly claim the model is a
+    hundred times more precise than it is."""
+    if pots < 1:
+        return "half a pot" if pots >= 0.25 else "less than a pot"
+    if pots < 10:
+        rounded = round(pots)
     else:
-        magnitude = 10 ** (len(str(int(boils))) - 1)
-        rounded = round(boils / magnitude) * magnitude
-    return f"{rounded:,} kettle{'' if rounded == 1 else 's'} boiled"
+        magnitude = 10 ** (len(str(int(pots))) - 1)
+        rounded = round(pots / magnitude) * magnitude
+    return f"{rounded:,}"
 
 
 def _footprint_note(view: RangeView) -> str:
@@ -661,12 +666,12 @@ def _footprint_note(view: RangeView) -> str:
     fp = view.footprint
     if not fp:
         return ""
-    boils = fp.kettle_boils
+    pots = fp.coffee_pots
     items = (
         ("energy", _one_sig_fig(fp.kwh, "kWh", "Wh", 1000), "ELECTRICITY"),
         ("water", _one_sig_fig(fp.litres, "L", "mL", 1000), "WATER"),
         ("carbon", _one_sig_fig(fp.g_co2e / 1000, "kg CO2e", "g CO2e", 1000), "CARBON"),
-        ("kettle", _kettles(boils).replace(" boiled", ""), "SAME AS BOILING"),
+        ("coffee", _coffee_pots(pots), "POTS OF COFFEE"),
     )
     # The category leads and the figure sits under it in small type. That
     # ordering suits a number with an order-of-magnitude error bar: the card
