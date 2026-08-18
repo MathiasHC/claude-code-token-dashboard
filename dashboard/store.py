@@ -221,11 +221,19 @@ class Store:
         # insert-only means a later pass over the same transcripts would skip
         # those rows and never fill it in — the BY EFFORT panel was blank for
         # exactly this reason until the database happened to be rebuilt.
-        # Rewinding every file makes the next pass re-read from the top, which
-        # is what gives _backfill something to write. Costs one full re-scan,
-        # measured at 4.3s over 18_644 records, once per schema change.
+        # Forgetting what has been read makes the next pass re-read from the
+        # top, which is what gives _BACKFILL something to write. Costs one
+        # full re-scan, measured at 3.1s over 18_644 records, once per
+        # schema change.
+        #
+        # The whole row goes, not just the offset. `scan` drops a file whose
+        # size and mtime match what was stored *before* it ever looks at the
+        # offset, so rewinding the offset alone re-reads nothing: on a live
+        # database that backfilled 8% of rows — only the transcripts that
+        # happened to have changed since the last pass — while a test
+        # asserting `offset == 0` passed the whole time.
         if added:
-            self._conn.execute("UPDATE scanned_file SET offset = 0, head = ''")
+            self._conn.execute("DELETE FROM scanned_file")
 
     def __enter__(self) -> "Store":
         return self

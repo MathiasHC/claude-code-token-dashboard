@@ -43,9 +43,22 @@ ON CONFLICT(message_id) DO UPDATE SET
                ELSE usage.prompt_run END
 ```
 
-`_migrate` also rewinds every row of `scanned_file` to offset 0 whenever it
-adds a column, because incremental reads would otherwise resume past the
-records the backfill needs.
+`_migrate` also clears `scanned_file` outright whenever it adds a column,
+because incremental reads would otherwise skip the records the backfill
+needs.
+
+The whole row goes, not just the offset. `scan` drops a file whose size and
+mtime match what was stored *before* it ever looks at the offset, so an
+offset-only rewind re-reads nothing but the transcripts that happened to have
+changed since the last pass. The first version of this change did exactly
+that, and on a live database it backfilled 8% of rows while a test asserting
+`offset == 0` passed throughout. The test was measuring the mechanism instead
+of the outcome, and it was measuring the wrong half of the mechanism.
+
+The regression test that replaced it goes through `scan(skip=db.file_stats())`
+— what the server actually calls. The original verification script had passed
+`skip=None`, which re-reads everything unconditionally and so could never have
+caught this.
 
 ## Why this is not a relaxation of insert-only
 

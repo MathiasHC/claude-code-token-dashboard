@@ -288,30 +288,87 @@ def test_numbers_are_left_alone_even_when_they_are_zero(tmp_path):
         assert db.records()[0].output_tokens == 0
 
 
-def test_adding_a_column_rewinds_every_scanned_file(tmp_path):
-    """A backfill needs something to backfill from, and incremental reads
-    resume past the records that need filling. Adding a column rewinds the
-    offsets so the next pass re-reads each transcript from the top."""
-    path = tmp_path / "history.db"
-    _legacy_db(path)
-    with Store(path) as db:
-        db.ingest(
-            scan.ScanResult(
-                records=[],
-                file_stats={"a.jsonl": scan.FileState(size=10, mtime=1.0, offset=10, head="h")},
-            )
-        )
-    # Reopening with no schema change must leave the offset where it was.
-    with Store(path) as db:
-        assert db.file_stats()["a.jsonl"].offset == 10
+def _transcript(directory: Path) -> Path:
+    """One session carrying a promptId, written the way a real one is."""
+    import json
 
+    path = directory / "s1.jsonl"
+    lines = [
+        {
+            "type": "user",
+            "sessionId": "s1",
+            "promptId": "prompt-abc",
+            "cwd": "/Users/demo/alpha",
+            "timestamp": "2026-07-29T09:59:00.000Z",
+            "message": {"role": "user", "content": "do the thing"},
+        },
+        {
+            "type": "assistant",
+            "sessionId": "s1",
+            "cwd": "/Users/demo/alpha",
+            "timestamp": "2026-07-29T10:00:00.000Z",
+            "message": {
+                "id": "m1",
+                "model": "claude-opus-5",
+                "usage": {"input_tokens": 0, "output_tokens": 1000},
+            },
+        },
+    ]
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    return path
+
+
+def test_a_column_added_later_is_filled_in_through_the_real_scan_path(tmp_path):
+    """The regression this file exists for, end to end.
+
+    An earlier version of this test asserted that adding a column rewound
+    `scanned_file.offset` to 0, and it passed while the backfill was doing
+    almost nothing: `scan` drops a file whose size and mtime match what was
+    stored *before* it ever consults the offset, so the rewind re-read only
+    the transcripts that happened to have changed. On a live database that
+    was 8% of rows.
+
+    So this goes through `scan(skip=db.file_stats())` — what the server
+    actually calls — rather than a full re-read with `skip=None`, which is
+    the shortcut that hid the bug.
+    """
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    _transcript(projects)
+    db_path = tmp_path / "history.db"
+
+    with Store(db_path) as db:
+        db.ingest(scan.scan(projects))
+        assert db.records()[0].prompt_run == "prompt-abc"
+
+    # Put the database back into the state a pre-prompt_run version left it
+    # in: the column gone, and the transcript already recorded as read.
     import sqlite3
 
-    conn = sqlite3.connect(str(path))
-    conn.execute("ALTER TABLE usage RENAME COLUMN prompt_run TO prompt_run_old")
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("ALTER TABLE usage DROP COLUMN prompt_run")
     conn.commit()
     conn.close()
 
-    with Store(path) as db:
-        assert db.file_stats()["a.jsonl"].offset == 0
-        assert db.file_stats()["a.jsonl"].head == ""
+    with Store(db_path) as db:
+        assert db.records()[0].prompt_run == ""
+        # The transcript is untouched on disk, so an unchanged size and
+        # mtime is exactly the case that must still re-read.
+        db.ingest(scan.scan(projects, skip=db.file_stats()))
+        assert db.records()[0].prompt_run == "prompt-abc"
+
+
+def test_an_unchanged_transcript_is_left_alone_once_the_schema_is_stable(tmp_path):
+    """The other side of it: forgetting what has been read is a one-off cost
+    at a schema change, not something every refresh pays."""
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    _transcript(projects)
+    db_path = tmp_path / "history.db"
+
+    with Store(db_path) as db:
+        db.ingest(scan.scan(projects))
+    with Store(db_path) as db:  # reopen, no schema change
+        stats = db.file_stats()
+        assert stats, "the file should still be recorded as read"
+        assert scan.scan(projects, skip=stats).records == []
