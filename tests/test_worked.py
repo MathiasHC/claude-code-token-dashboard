@@ -221,7 +221,9 @@ def test_the_panel_says_worked_and_never_saved():
 def test_the_panel_admits_that_parallel_agents_are_summed():
     records = [rec("m1", 3600), rec("m2", 3600, is_subagent=True)]
     out = render_html.render(aggregate.build(records, {}, now=NOW))
-    assert "SUBAGENTS" in out
+    # The separator disambiguates the card from the MOST SUBAGENTS
+    # leaderboard, the same collision "BY MODE" had with "BY MODEL".
+    assert "SUBAGENTS &middot;" in out
     assert "parallel agents summed, so this exceeds wall-clock" in out
 
 
@@ -255,7 +257,7 @@ def test_the_cards_cover_work_subagents_waiting_and_sessions():
     records = [rec("m1", 3600, wait_seconds=600),
                rec("m2", 1800, wait_seconds=0, is_subagent=True, session_id="s2")]
     out = render_html.render(aggregate.build(records, {}, now=NOW))
-    for label in ("MACHINE TIME", "SUBAGENTS", "WAITING ON YOU", "SESSIONS"):
+    for label in ("MACHINE TIME", "SUBAGENTS &middot;", "WAITING ON YOU", "SESSIONS"):
         assert label in out, label
 
 
@@ -269,7 +271,7 @@ def test_a_card_is_omitted_when_its_figure_is_absent():
     """No subagents means no subagent card, rather than a card reading 0s."""
     out = render_html.render(aggregate.build([rec("m1", 3600)], {}, now=NOW))
     assert "MACHINE TIME" in out
-    assert "SUBAGENTS" not in out
+    assert "SUBAGENTS &middot;" not in out
 
 
 def test_the_panel_states_how_it_was_measured():

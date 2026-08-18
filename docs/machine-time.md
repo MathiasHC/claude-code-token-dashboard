@@ -131,10 +131,13 @@ Rows written before these columns existed read back as **zero**. That
 understates history rather than inventing it — those gaps were never
 recorded.
 
-Re-scanning does not fix it. The store is insert-only (`INSERT OR IGNORE` on
-the message id), so a second pass over the same transcripts leaves existing
-rows untouched by design. That is the property that makes re-scanning safe
-and idempotent, and it is worth more than an automatic backfill.
+Re-scanning does not fix it, and this is one of the two columns where that
+is still true. The store backfills text columns whose empty string means
+"never recorded" (see [ADR 0003](adr/0003-backfilling-added-columns.md)), but
+`work_seconds` and `wait_seconds` are numbers, and a stored `0` is
+indistinguishable from an unwritten one. Treating every zero as missing would
+make every genuine zero mutable, which is the thing insert-only exists to
+prevent — so these two stay as they were written.
 
 To backfill, delete the database and let it rebuild:
 

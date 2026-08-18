@@ -243,3 +243,132 @@ def test_legacy_scanned_file_table_gains_offset_and_head(tmp_path):
     assert state.offset == 0
     assert state.head == ""
     assert scan._resume_offset(None, state, 10) == 0
+
+
+# --- backfilling a column that did not exist when the row was written ----
+
+
+def test_a_column_added_later_is_filled_in_by_the_next_scan(tmp_path):
+    """The defect this exists to prevent: insert-only meant a re-scan skipped
+    every row it had already seen, so a column added afterwards stayed empty
+    for the whole of history and its panel rendered blank forever."""
+    path = tmp_path / "history.db"
+    _legacy_db(path)
+    with Store(path) as db:
+        # The legacy row predates prompt_run entirely.
+        assert db.records()[0].prompt_run == ""
+        db.ingest(scan.ScanResult(records=[a_record("old1", prompt_run="p1")]))
+        assert db.records()[0].prompt_run == "p1"
+
+
+def test_a_value_already_recorded_is_never_overwritten(tmp_path):
+    """The other half of the guard. Backfilling an empty column records a
+    fact for the first time; replacing one that is already there would be
+    the mutation ADR-0001 rules out."""
+    with Store(":memory:") as db:
+        db.ingest(scan.ScanResult(records=[a_record("m1", prompt_run="first")]))
+        db.ingest(scan.ScanResult(records=[a_record("m1", prompt_run="second")]))
+        assert db.records()[0].prompt_run == "first"
+
+
+def test_backfilling_still_reports_no_new_rows(tmp_path):
+    """Filling a blank must not read as fresh usage — the refresh counter and
+    every 'nothing changed' path hang off this number."""
+    with Store(":memory:") as db:
+        assert db.ingest(scan.ScanResult(records=[a_record("m1")])) == 1
+        assert db.ingest(scan.ScanResult(records=[a_record("m1", prompt_run="p1")])) == 0
+
+
+def test_numbers_are_left_alone_even_when_they_are_zero(tmp_path):
+    """A measured 0 is a measurement. Only columns whose empty string means
+    'never recorded' are backfillable, so no numeric column may move."""
+    with Store(":memory:") as db:
+        db.ingest(scan.ScanResult(records=[a_record("m1", output_tokens=0)]))
+        db.ingest(scan.ScanResult(records=[a_record("m1", output_tokens=999)]))
+        assert db.records()[0].output_tokens == 0
+
+
+def _transcript(directory: Path) -> Path:
+    """One session carrying a promptId, written the way a real one is."""
+    import json
+
+    path = directory / "s1.jsonl"
+    lines = [
+        {
+            "type": "user",
+            "sessionId": "s1",
+            "promptId": "prompt-abc",
+            "cwd": "/Users/demo/alpha",
+            "timestamp": "2026-07-29T09:59:00.000Z",
+            "message": {"role": "user", "content": "do the thing"},
+        },
+        {
+            "type": "assistant",
+            "sessionId": "s1",
+            "cwd": "/Users/demo/alpha",
+            "timestamp": "2026-07-29T10:00:00.000Z",
+            "message": {
+                "id": "m1",
+                "model": "claude-opus-5",
+                "usage": {"input_tokens": 0, "output_tokens": 1000},
+            },
+        },
+    ]
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    return path
+
+
+def test_a_column_added_later_is_filled_in_through_the_real_scan_path(tmp_path):
+    """The regression this file exists for, end to end.
+
+    An earlier version of this test asserted that adding a column rewound
+    `scanned_file.offset` to 0, and it passed while the backfill was doing
+    almost nothing: `scan` drops a file whose size and mtime match what was
+    stored *before* it ever consults the offset, so the rewind re-read only
+    the transcripts that happened to have changed. On a live database that
+    was 8% of rows.
+
+    So this goes through `scan(skip=db.file_stats())` — what the server
+    actually calls — rather than a full re-read with `skip=None`, which is
+    the shortcut that hid the bug.
+    """
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    _transcript(projects)
+    db_path = tmp_path / "history.db"
+
+    with Store(db_path) as db:
+        db.ingest(scan.scan(projects))
+        assert db.records()[0].prompt_run == "prompt-abc"
+
+    # Put the database back into the state a pre-prompt_run version left it
+    # in: the column gone, and the transcript already recorded as read.
+    import sqlite3
+
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("ALTER TABLE usage DROP COLUMN prompt_run")
+    conn.commit()
+    conn.close()
+
+    with Store(db_path) as db:
+        assert db.records()[0].prompt_run == ""
+        # The transcript is untouched on disk, so an unchanged size and
+        # mtime is exactly the case that must still re-read.
+        db.ingest(scan.scan(projects, skip=db.file_stats()))
+        assert db.records()[0].prompt_run == "prompt-abc"
+
+
+def test_an_unchanged_transcript_is_left_alone_once_the_schema_is_stable(tmp_path):
+    """The other side of it: forgetting what has been read is a one-off cost
+    at a schema change, not something every refresh pays."""
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    _transcript(projects)
+    db_path = tmp_path / "history.db"
+
+    with Store(db_path) as db:
+        db.ingest(scan.scan(projects))
+    with Store(db_path) as db:  # reopen, no schema change
+        stats = db.file_stats()
+        assert stats, "the file should still be recorded as read"
+        assert scan.scan(projects, skip=stats).records == []

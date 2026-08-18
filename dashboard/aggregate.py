@@ -6,7 +6,7 @@ import calendar
 import datetime as dt
 from collections import Counter, defaultdict
 
-from . import footprint, plans, pricing, ranges
+from . import footprint, leaderboards, plans, pricing, ranges
 from . import dates
 from .dates import instant
 from .models import (
@@ -475,5 +475,9 @@ def build(
         burn_rate_hourly=burn_rate,
         idle_minutes=idle_minutes,
         today_day=today_str,
+        # Global on purpose — see dashboard/leaderboards.py. Costs are
+        # handed over rather than recomputed: every record here has already
+        # been priced once above.
+        leaderboards=leaderboards.build(dated, costs, titles),
         unpriced_models=sorted({r.model for r in dated if not pricing.is_priced(r.model)}),
     )

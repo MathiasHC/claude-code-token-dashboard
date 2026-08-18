@@ -107,10 +107,20 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
     # technically correct and completely uninformative.
     titles = {f"sess-{i}": title for i, title in enumerate(SESSION_TITLES)}
     session_ids = list(titles)
+    # Which prompt each session is currently on. A prompt is one thing the
+    # person typed plus everything the machine did answering it, so messages
+    # arrive in runs rather than one per turn — ~12 apiece here, against 23
+    # on the real history the boards were checked against.
+    prompt_seq = dict.fromkeys(session_ids, 0)
     session_weights = [round(1 / (i + 1) ** 0.7, 4) for i in range(len(session_ids))]
 
     for day_offset in range(ACTIVE_DAYS - 1, -1, -1):
         day = (NOW.date() - dt.timedelta(days=day_offset)).isoformat()
+        # Days genuinely off, not merely quiet. Without them every day in
+        # the window is active, so the streak board is one unbroken run and
+        # the break board has nothing at all to show.
+        if day_offset and rng.random() < 0.07:
+            continue
         weekend = dt.date.fromisoformat(day).weekday() >= 5
         # Weekends are quieter, and effort drifts rather than being uniform.
         base = rng.randint(4, 40) if weekend else rng.randint(90, 340)
@@ -118,8 +128,19 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
         if not weekend and rng.random() < 0.12:
             base = int(base * rng.uniform(1.6, 2.4))
 
+        # A handful of short-lived sessions per day alongside the named
+        # long-runners. Reusing only the fixed pool put all ten sessions on
+        # every weekday, so the sessions-per-weekday board read a flat 10
+        # across the board and said nothing.
+        walk_ins = [f"sess-{day}-{n}" for n in range(rng.randint(1, 5))]
+
         for _ in range(base):
-            session_id = rng.choices(session_ids, weights=session_weights)[0]
+            session_id = (
+                rng.choice(walk_ins)
+                if rng.random() < 0.18
+                else rng.choices(session_ids, weights=session_weights)[0]
+            )
+            prompt_seq.setdefault(session_id, 0)
 
             model = _weighted(rng, MODELS)
             # Context replay dominates cost on agentic workloads, so these
@@ -132,10 +153,20 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
             write_1h = int(rng.lognormvariate(8.5, 1.0)) if rng.random() < 0.22 else 0
             write_5m = int(rng.lognormvariate(8.0, 0.9)) if rng.random() < 0.16 else 0
 
+            if rng.random() < 0.085:
+                prompt_seq[session_id] += 1
+
             # Spread through the working day. A fixed timestamp gave every
             # record on a day the same instant, so active time was zero and
             # the live burn rate could never appear in the screenshot.
-            offset = dt.timedelta(minutes=rng.randint(0, 9 * 60))
+            #
+            # One evening in ten runs late. Without a tail the LATEST NIGHT
+            # board tops out at whenever the working day is set to end, which
+            # is a board about nothing.
+            offset = dt.timedelta(
+                minutes=rng.randint(0, 9 * 60) if rng.random() < 0.90
+                else rng.randint(9 * 60, 15 * 60)
+            )
             stamp = dt.datetime.fromisoformat(f"{day}T08:00:00") + offset
             records.append(
                 UsageRecord(
@@ -183,6 +214,7 @@ def demo_records(rng: random.Random) -> tuple[list[UsageRecord], dict[str, str]]
                         _weighted(rng, ORIGINS) if skill != "(none)" else ""
                     ),
                     skill_run=(f"{session_id}:{skill}" if skill != "(none)" else ""),
+                    prompt_run=f"{session_id}:p{prompt_seq[session_id]}",
                 )
             )
 

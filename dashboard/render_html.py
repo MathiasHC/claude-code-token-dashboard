@@ -111,6 +111,29 @@ td.card { background:#161b22; border:1px solid #30363d; padding:11px 6px 10px 6p
 .cardnote.framed { background:#161b22; border:1px solid #30363d;
                    padding:6px 10px; font-size:11px; margin-top:5px; }
 
+/* All-time leaderboards. A full-width heading rather than a per-panel one:
+   the "these ignore the range selector" caveat is true of the whole block,
+   and repeating it twelve times would cost more room than the boards. */
+.section { background:#161b22; border:1px solid #30363d; padding:6px 10px;
+           font-size:11px; letter-spacing:1.5px; color:#e6edf3; margin-top:5px; }
+.section .quiet { letter-spacing:0; color:#8b949e; }
+table.lrows { width:100%; table-layout:fixed; border-collapse:collapse; }
+table.lrows td { font-size:13px; padding:2px 0; white-space:nowrap;
+                 overflow:hidden; }
+td.rank { width:13px; font-size:11px; color:#6e7681; }
+/* Medal colours, which is the entire reason anybody reads a leaderboard.
+   Third place is deliberately dimmer than second rather than bronze-brown:
+   brown on #161b22 is unreadable from the far side of a room. */
+.rank1 { color:#e3b341; }
+.rank2 { color:#c9d1d9; }
+.rank3 { color:#a06e3b; }
+td.lname { text-overflow:ellipsis; padding-right:6px; color:#e6edf3; }
+td.lval { width:74px; text-align:right; color:#e6edf3; }
+.lnote { color:#6e7681; font-size:10px; }
+/* A ragged final row must not stretch the boards that are in it, so the
+   empty cells stay in the table and only lose their chrome. */
+table.grid > tbody > tr > td.pad { background:transparent; border:0; }
+
 /* Card icons. Each is a fixed outline plus up to three frames of the one
    moving part, cross-faded — a flipbook.
 
@@ -137,6 +160,14 @@ td.card { background:#161b22; border:1px solid #30363d; padding:11px 6px 10px 6p
   .frame1 { opacity:1 } .frame2, .frame3 { opacity:0 }
 }
 """.strip()
+
+
+#: Boards per row in the all-time section. Twelve boards divide evenly into
+#: both three and four, so either reads as a full block rather than as a grid
+#: with a hole in it. Three won on legibility: at four across a cache-miss
+#: reason truncates to "system_change", the longest streak loses its year and
+#: a session title gets about twenty characters. The cost is 92px of page.
+LEADERBOARD_COLUMNS = 3
 
 
 def _money(value: float) -> str:
@@ -773,6 +804,74 @@ def _skill_runs(runs) -> str:
     return "".join(out)
 
 
+def _tokens(value: float) -> str:
+    """Token counts at a glance. Nobody reads 759,426 off a wall display."""
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.0f}k"
+    return f"{value:,.0f}"
+
+
+#: How each Leaderboard.unit renders. A table rather than a chain of ifs so
+#: that a board naming a unit nobody implemented fails visibly at its own
+#: row instead of silently formatting a duration as a count.
+_LEADER_UNITS = {
+    "money": _money,
+    "duration": _duration,
+    "tokens": _tokens,
+    "clock": lambda value: f"{int(value):02d}:00",
+    "days": lambda value: f"{int(value)} day" + ("" if int(value) == 1 else "s"),
+    "count": lambda value: f"{value:,.0f}",
+}
+
+
+def _leader_rows(board) -> str:
+    if not board.leaders:
+        return '<div class="note">not enough history yet</div>'
+    render_value = _LEADER_UNITS.get(board.unit, _LEADER_UNITS["count"])
+    out = ['<table class="lrows">']
+    for place, leader in enumerate(board.leaders, start=1):
+        note = f' <span class="lnote">{escape(leader.note)}</span>' if leader.note else ""
+        out.append(
+            "<tr>"
+            f'<td class="rank rank{place}">{place}</td>'
+            f'<td class="lname">{escape(leader.label)}{note}</td>'
+            f'<td class="lval">{escape(render_value(leader.value))}</td>'
+            "</tr>"
+        )
+    out.append("</table>")
+    if board.note:
+        out.append(f'<div class="note">{escape(board.note)}</div>')
+    return "".join(out)
+
+
+def _leaderboards(boards, columns: int) -> str:
+    """The all-time block, laid out `columns` boards to a row.
+
+    The heading says ALL TIME because it has to. Every other panel below the
+    selector re-scopes when a range is picked and these do not, so without
+    the caveat the section reads as a range that silently refused to apply.
+    """
+    if not boards:
+        return ""
+    out = [
+        '<div class="section">ALL-TIME LEADERBOARDS'
+        ' <span class="quiet">&middot; top three ever &middot; '
+        "not affected by the range above</span></div>",
+        '<table class="grid"><tbody>',
+    ]
+    for start in range(0, len(boards), columns):
+        row = boards[start : start + columns]
+        out.append("<tr>")
+        for board in row:
+            out.append(f"<td><h2>{escape(board.title)}</h2>{_leader_rows(board)}</td>")
+        out.extend('<td class="pad"></td>' for _ in range(columns - len(row)))
+        out.append("</tr>")
+    out.append("</tbody></table>")
+    return "".join(out)
+
+
 def _cache_note(view: RangeView) -> str:
     """What caching bought, rather than how often it hit.
 
@@ -833,6 +932,7 @@ def render(
     warning: str | None = None,
     refresh_seconds: int = 30,
     base_path: str = "",
+    leaderboard_columns: int | None = None,
 ) -> str:
     banner = f'<div class="warn">{escape(warning)}</div>' if warning else ""
     view = data.scoped
@@ -904,5 +1004,6 @@ def render(
 {_trivia(view)}
 {_worked_band(view)}
 {_footprint_note(view)}
+{_leaderboards(data.leaderboards, leaderboard_columns or LEADERBOARD_COLUMNS)}
 </body></html>
 """
