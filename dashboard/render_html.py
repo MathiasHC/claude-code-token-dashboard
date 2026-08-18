@@ -162,10 +162,12 @@ table.grid > tbody > tr > td.pad { background:transparent; border:0; }
 """.strip()
 
 
-#: Boards per row in the all-time section. Twelve boards divide evenly
-#: into both three and four, so either reads as a full block rather than
-#: as a grid with a hole in it.
-LEADERBOARD_COLUMNS = 4
+#: Boards per row in the all-time section. Twelve boards divide evenly into
+#: both three and four, so either reads as a full block rather than as a grid
+#: with a hole in it. Three won on legibility: at four across a cache-miss
+#: reason truncates to "system_change", the longest streak loses its year and
+#: a session title gets about twenty characters. The cost is 92px of page.
+LEADERBOARD_COLUMNS = 3
 
 
 def _money(value: float) -> str:

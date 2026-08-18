@@ -143,13 +143,14 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **1580px tall**, measured
+The page is laid out for a width of **1024** and is **1672px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
 the daily chart fits a 1024×768 screen; the two card rows — machine time and
 footprint — and the all-time leaderboards below them need a scroll.
 
-Set `render_html.LEADERBOARD_COLUMNS` to `3` for wider boards at 1672px, or
-drop the leaderboards from `render()` entirely to get back to 1210px.
+Set `render_html.LEADERBOARD_COLUMNS` to `4` to trade board width for 92px of
+height (1580px), or drop the leaderboards from `render()` entirely to get back
+to 1210px.
 
 That is a deliberate trade rather than an oversight. The drawings are only
 worth having if they are big enough to read, and at 34px they were not —
