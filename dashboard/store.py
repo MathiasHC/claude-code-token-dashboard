@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS usage (
   denials           INTEGER NOT NULL DEFAULT 0,
   injections        INTEGER NOT NULL DEFAULT 0,
   skill_origin      TEXT    NOT NULL DEFAULT '',
-  skill_run         TEXT    NOT NULL DEFAULT ''
+  skill_run         TEXT    NOT NULL DEFAULT '',
+  prompt_run        TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS usage_day ON usage(day);
 
@@ -92,9 +93,38 @@ _FIELDS = (
     "injections",
     "skill_origin",
     "skill_run",
+    "prompt_run",
 )
 _COLUMNS = ", ".join(_FIELDS)
 _PLACEHOLDERS = ",".join("?" * len(_FIELDS))
+
+#: Columns a re-scan may fill in on a row that already exists, and only
+#: while they are still empty. This is not a relaxation of insert-only: a
+#: column added after a row was written holds no measurement to overwrite,
+#: so writing one records a fact for the first time rather than changing
+#: one. The `= ''` guard is what keeps that true — once a value is there,
+#: every later pass leaves it alone.
+#:
+#: Only columns whose empty string genuinely means "never recorded" are
+#: listed. Numeric columns are deliberately absent: a measured 0 is a
+#: measurement, and a clause that could not tell it apart from an unwritten
+#: one would make every zero mutable, which is the thing ADR-0001's
+#: insert-only rule exists to prevent. Sentinel columns like effort's
+#: '(none)' are absent for the same reason — '(none)' is recorded, not
+#: missing.
+_BACKFILLABLE = (
+    "mcp_server",
+    "cache_miss_reason",
+    "stop_reason",
+    "skill_origin",
+    "skill_run",
+    "prompt_run",
+)
+_BACKFILL = ", ".join(
+    f"{name} = CASE WHEN usage.{name} = '' THEN excluded.{name} "
+    f"ELSE usage.{name} END"
+    for name in _BACKFILLABLE
+)
 
 
 def _row(record: UsageRecord) -> tuple:
@@ -131,6 +161,7 @@ class Store:
         predates multi-source scanning came from Claude Code.
         """
         existing = {row[1] for row in self._conn.execute("PRAGMA table_info(usage)")}
+        added = [name for name in _FIELDS if name not in existing]
         if "source" not in existing:
             self._conn.execute(
                 "ALTER TABLE usage ADD COLUMN source TEXT NOT NULL DEFAULT 'code'"
@@ -167,6 +198,7 @@ class Store:
             ("injections", "INTEGER NOT NULL DEFAULT 0"),
             ("skill_origin", "TEXT    NOT NULL DEFAULT ''"),
             ("skill_run", "TEXT    NOT NULL DEFAULT ''"),
+            ("prompt_run", "TEXT    NOT NULL DEFAULT ''"),
         ):
             if column not in existing:
                 self._conn.execute(
@@ -184,6 +216,16 @@ class Store:
             self._conn.execute(
                 "ALTER TABLE scanned_file ADD COLUMN head TEXT NOT NULL DEFAULT ''"
             )
+
+        # A column only just added is empty on every row already stored, and
+        # insert-only means a later pass over the same transcripts would skip
+        # those rows and never fill it in — the BY EFFORT panel was blank for
+        # exactly this reason until the database happened to be rebuilt.
+        # Rewinding every file makes the next pass re-read from the top, which
+        # is what gives _backfill something to write. Costs one full re-scan,
+        # measured at 4.3s over 18_644 records, once per schema change.
+        if added:
+            self._conn.execute("UPDATE scanned_file SET offset = 0, head = ''")
 
     def __enter__(self) -> "Store":
         return self
@@ -204,7 +246,8 @@ class Store:
         before = cursor.execute("SELECT COUNT(*) FROM usage").fetchone()[0]
 
         cursor.executemany(
-            f"INSERT OR IGNORE INTO usage ({_COLUMNS}) VALUES ({_PLACEHOLDERS})",
+            f"INSERT INTO usage ({_COLUMNS}) VALUES ({_PLACEHOLDERS}) "
+            f"ON CONFLICT(message_id) DO UPDATE SET {_BACKFILL}",
             [_row(r) for r in result.records],
         )
         cursor.executemany(

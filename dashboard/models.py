@@ -76,6 +76,12 @@ class UsageRecord(NamedTuple):
     #: by every message in that run — the id of its first message.
     skill_origin: str = ""
     skill_run: str = ""
+    #: The prompt this message belongs to — one human turn and everything
+    #: the machine did in response, tool results included. Transcripts put
+    #: `promptId` on user records only, never on assistant ones, so like
+    #: `mode` this is carried forward as scan state rather than read off
+    #: the message that needs it.
+    prompt_run: str = ""
 
 
 class Plan(NamedTuple):
@@ -122,6 +128,42 @@ class Window:
 class DayCost:
     day: str
     cost: float
+
+
+@dataclass(frozen=True)
+class Leader:
+    """One placed row on a leaderboard.
+
+    `value` stays a raw number and the board says what unit it is in, for
+    the same reason Bar carries a float: a pre-formatted string cannot be
+    asserted against without pinning the display format into every test.
+    """
+
+    label: str
+    value: float
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class Leaderboard:
+    """A top three, and what it is a top three of.
+
+    Global by construction. Nothing here narrows to the selected range —
+    see dashboard/leaderboards.py for why that is a property of the claim
+    rather than an oversight.
+    """
+
+    title: str
+    #: How the renderer should format `value`: one of the keys in
+    #: render_html._LEADER_UNITS. Carried per board rather than per row
+    #: because a board whose rows disagreed about their unit would be
+    #: ranking incomparable things.
+    unit: str
+    leaders: list[Leader] = field(default_factory=list)
+    #: An extra fact that belongs with this board but is not a placing —
+    #: the counterpart figure, e.g. the earliest start under the latest
+    #: nights. Empty for most boards.
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -263,6 +305,10 @@ class DashboardData:
     #: Today as a local ISO date, so the daily chart can mark its own
     #: column without the renderer reading a clock.
     today_day: str = ""
+    #: All-time top threes. On DashboardData rather than RangeView because
+    #: they are all-time: a leaderboard that re-ranked when somebody picked
+    #: LAST 7 DAYS would not be the thing its heading claims.
+    leaderboards: list[Leaderboard] = field(default_factory=list)
 
     @property
     def effective_multiple(self) -> float:

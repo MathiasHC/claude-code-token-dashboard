@@ -14,6 +14,8 @@ from dashboard.models import (
     Bar,
     DashboardData,
     DayCost,
+    Leader,
+    Leaderboard,
     Plan,
     RangeView,
     UsageRecord,
@@ -456,6 +458,45 @@ def _golden_data() -> DashboardData:
             subagent_worked_seconds=37_800.0,
             footprint=Footprint(kwh=2.4, litres=8.7, g_co2e=884.0),
         ),
+        # Five boards, not four: with LEADERBOARD_COLUMNS at four this pins
+        # both a full row and a ragged one, so the padding cells that keep a
+        # short final row from stretching are in the snapshot. Between them
+        # the boards cover every unit the renderer knows how to format.
+        leaderboards=[
+            Leaderboard(
+                title="WEEKDAY · SPEND",
+                unit="money",
+                leaders=[
+                    Leader(label="Tuesday", value=1025.83),
+                    Leader(label="Thursday", value=803.42),
+                    Leader(label="Monday", value=803.20),
+                ],
+            ),
+            Leaderboard(
+                title="WEEKDAY · SESSIONS",
+                unit="count",
+                leaders=[Leader(label="Monday", value=48)],
+            ),
+            Leaderboard(
+                title="LONGEST PROMPT",
+                unit="duration",
+                leaders=[
+                    Leader(label="16 Jul 2026", value=10_920.0, note="332 msgs")
+                ],
+                note="machine time, not wall clock",
+            ),
+            Leaderboard(
+                title="LATEST NIGHT",
+                unit="clock",
+                leaders=[Leader(label="04 Aug 2026", value=2)],
+                note="earliest start 07:00",
+            ),
+            Leaderboard(
+                title="LONGEST STREAK",
+                unit="days",
+                leaders=[Leader(label="13–25 Jul 2026", value=13)],
+            ),
+        ],
     )
 
 
@@ -640,7 +681,111 @@ def test_the_three_breakdowns_share_a_row_and_the_chart_spans_the_width():
     out = render_html.render(data)
     assert "</td>\n<td><h2>BY SKILL" in out
     assert "</td>\n<td><h2>TOP SESSIONS" in out
-    # The chart is alone in the last grid table, so it spans the full width.
-    last = out.rsplit('<table class="grid">', 1)[1]
+    # The chart is alone in the last grid table before the all-time
+    # section, so it spans the full width. Scoped above that section
+    # because the leaderboards are grid tables too.
+    scoped_part = out.split('<div class="section">')[0]
+    last = scoped_part.rsplit('<table class="grid">', 1)[1]
     assert last.count("<h2>") == 1
     assert "DAILY" in last
+
+
+# --- all-time leaderboards -----------------------------------------------
+
+
+def test_the_leaderboard_section_says_it_ignores_the_range():
+    """Every other panel below the selector re-scopes and these do not, so
+    without the caveat the section reads as a range that silently refused to
+    apply."""
+    out = render_html.render(_golden_data())
+    assert "ALL-TIME LEADERBOARDS" in out
+    assert "not affected by the range above" in out
+
+
+def test_each_unit_gets_its_own_formatting():
+    out = render_html.render(_golden_data())
+    assert "$1,025.83" in out  # money
+    assert ">48<" in out  # count
+    assert "3h 2m" in out  # duration, from 10_920 seconds
+    assert "02:00" in out  # clock
+    assert "13 days" in out  # days
+
+
+def test_a_board_is_laid_out_at_the_requested_width():
+    """The layout is a parameter rather than a constant read at import time,
+    so a page can be rendered at either width without patching a global."""
+    data = _golden_data()
+    four = render_html.render(data, leaderboard_columns=4)
+    three = render_html.render(data, leaderboard_columns=3)
+    def cells(out):
+        """Board cells and padding cells in the all-time section. Together
+        they must fill whole rows, which is what proves the width."""
+        section = out.split('<div class="section">')[1]
+        return section.count("<td><h2>"), section.count('<td class="pad">')
+
+    assert cells(four) == (5, 3)  # 5 boards + 3 pads = two rows of four
+    assert cells(three) == (5, 1)  # 5 boards + 1 pad  = two rows of three
+
+
+def test_a_single_day_is_not_one_days():
+    """A break board full of "1 days" was the first thing the eye caught on
+    the rendered page."""
+    data = dataclasses.replace(
+        _golden_data(),
+        leaderboards=[
+            Leaderboard(
+                title="LONGEST BREAK",
+                unit="days",
+                leaders=[Leader(label="21 May → 23 May 2026", value=1)],
+            )
+        ],
+    )
+    out = render_html.render(data)
+    assert "1 day<" in out
+    assert "1 days" not in out
+
+
+def test_a_board_with_no_placings_says_so_rather_than_rendering_empty():
+    data = dataclasses.replace(
+        _golden_data(),
+        leaderboards=[Leaderboard(title="WEEKDAY · SPEND", unit="money")],
+    )
+    out = render_html.render(data)
+    assert "not enough history yet" in out
+
+
+def test_no_leaderboards_means_no_section_at_all():
+    out = render_html.render(dataclasses.replace(_golden_data(), leaderboards=[]))
+    assert "ALL-TIME LEADERBOARDS" not in out
+
+
+def test_a_session_title_on_a_board_is_escaped():
+    """Titles are the first line somebody typed, and MOST SUBAGENTS labels
+    rows with them."""
+    data = dataclasses.replace(
+        _golden_data(),
+        leaderboards=[
+            Leaderboard(
+                title="MOST SUBAGENTS",
+                unit="count",
+                leaders=[Leader(label="<script>alert(1)</script>", value=9)],
+            )
+        ],
+    )
+    out = render_html.render(data)
+    assert "<script>alert(1)</script>" not in out
+    assert "&lt;script&gt;" in out
+
+
+def test_a_board_naming_an_unknown_unit_still_renders():
+    data = dataclasses.replace(
+        _golden_data(),
+        leaderboards=[
+            Leaderboard(
+                title="SOMETHING NEW",
+                unit="furlongs",
+                leaders=[Leader(label="Monday", value=1234)],
+            )
+        ],
+    )
+    assert "1,234" in render_html.render(data)

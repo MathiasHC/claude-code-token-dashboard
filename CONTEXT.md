@@ -44,12 +44,41 @@ mistake the type system now prevents:
 - **Scoped** — everything below the selector: where the money goes, the
   breakdowns, the bands, the daily chart. Re-computed for the selected range.
 
+The all-time leaderboards are global despite sitting at the very bottom of the
+page, which is the one place the "below the selector means scoped" shorthand
+breaks. The section heading says ALL TIME for exactly that reason.
+
 ## Range view
 
 `models.RangeView`: all the scoped figures together with the label that says
 which window they belong to. Reached as `DashboardData.scoped`. Its reason to
 exist is that the label travels with the numbers, so a panel cannot render a
 scoped figure without being able to say what it is scoped to.
+
+## Prompt run
+
+One human turn and everything the machine did answering it — the reply, every
+tool call, every subagent, up to the next thing the person typed. Transcripts
+put `promptId` on user records only, never on assistant ones, so `scan` carries
+the id forward as state the way it does the permission mode. Tool results
+repeat their own prompt's id, which is what makes a whole turn group rather
+than just its first reply.
+
+A prompt's **length** is the machine time its messages add up to, not the
+wall-clock span from first to last. Elapsed time would crown whichever prompt
+happened to be open when somebody walked away from the keyboard.
+
+## Leaderboard
+
+An all-time top three: `models.Leaderboard`, built by `dashboard/leaderboards.py`
+and reached as `DashboardData.leaderboards`. Twelve of them, global by
+construction — see **Scope**.
+
+Each carries a `unit` naming how the renderer should format its numbers
+(`money`, `count`, `duration`, `tokens`, `clock`, `days`) rather than
+pre-formatted strings, so a board's placings can be asserted against without
+pinning display format into a test. A board's `note` is a fact that belongs
+with it but is not a placing — the earliest start under the latest nights.
 
 ## Api-equivalent cost
 

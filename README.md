@@ -16,7 +16,7 @@ Everything stays on your machine: no account, no telemetry, no network calls.
 
 **No dependencies outside the Python standard library.**
 
-![The dashboard showing token spend broken down by model, project, skill and source](docs/screenshot.jpg)
+![The dashboard showing token spend broken down by model, project, skill and source, with machine time, environmental footprint and all-time leaderboards below](docs/screenshot.jpg)
 
 *Every figure above is synthetic demo data, not real usage. Reproduce it with
 `python3 tools/demo_page.py demo.html` and open the file — a way to see the
@@ -143,10 +143,13 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **1210px tall**, measured
+The page is laid out for a width of **1024** and is **1580px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
-the daily chart fits a 1024×768 screen; the two card rows —
-machine time and footprint — sit below the fold and need a short scroll.
+the daily chart fits a 1024×768 screen; the two card rows — machine time and
+footprint — and the all-time leaderboards below them need a scroll.
+
+Set `render_html.LEADERBOARD_COLUMNS` to `3` for wider boards at 1672px, or
+drop the leaderboards from `render()` entirely to get back to 1210px.
 
 That is a deliberate trade rather than an oversight. The drawings are only
 worth having if they are big enough to read, and at 34px they were not —
@@ -408,10 +411,20 @@ reopening the bare URL.
   split.
 - **By source** — which Claude surface the spend came from. Only surfaces that
   keep token counts on disk can appear; see "Which surfaces are covered".
+- **All-time leaderboards** — twelve top-threes at the foot of the page:
+  spend, sessions and messages by weekday; the priciest month and date; the
+  longest and priciest prompt; streaks and breaks; latest night; biggest
+  cache miss; most subagents in one session. A **prompt** is one thing you
+  typed plus everything the machine did answering it, and its length is
+  machine time rather than elapsed, so a prompt left open overnight does not
+  win.
 - **Panels follow the selected range; the top row never does.** The hero row
   and the plan comparison are always the same four windows, whatever is
   selected. Everything below the range selector re-scopes, and each panel
-  states its range in its heading. The default is the last 30 days.
+  states its range in its heading. The default is the last 30 days. The one
+  exception is the leaderboard section, which is all-time and says so in its
+  heading — a top three that re-ranked itself per range would not be a top
+  three.
 - **caching saved** — what your cache reads *would* have cost at full input
   rates. A counterfactual, not money that was ever at stake: cache reads bill
   at 0.1×, so this is the 0.9× you never paid.

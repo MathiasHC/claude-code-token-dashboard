@@ -326,6 +326,7 @@ def scan(
         run_origin = ""
         run_id = ""
         run_start = 0
+        prompt_id = ""
         for raw in chunk[:end].split(b"\n"):
             if not raw.strip():
                 continue
@@ -340,6 +341,16 @@ def scan(
 
             session_id = entry.get("sessionId") or entry.get("session_id") or ""
             kind = entry.get("type")
+
+            # Only user records carry promptId — 19_682 of them against 0
+            # assistant records on a real history — so the id has to be
+            # held from the turn that opened the prompt until the messages
+            # that answer it. Tool results repeat their own prompt's id,
+            # which is what makes a whole turn group rather than just its
+            # first reply.
+            declared_prompt = entry.get("promptId")
+            if declared_prompt:
+                prompt_id = str(declared_prompt)
 
             declared = entry.get("permissionMode")
             if declared:
@@ -479,6 +490,7 @@ def scan(
                     injections=pending_injections,
                     skill_origin=run_origin,
                     skill_run=run_id,
+                    prompt_run=prompt_id,
                 )
             )
             last_emitted = len(records) - 1

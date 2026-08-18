@@ -243,3 +243,75 @@ def test_legacy_scanned_file_table_gains_offset_and_head(tmp_path):
     assert state.offset == 0
     assert state.head == ""
     assert scan._resume_offset(None, state, 10) == 0
+
+
+# --- backfilling a column that did not exist when the row was written ----
+
+
+def test_a_column_added_later_is_filled_in_by_the_next_scan(tmp_path):
+    """The defect this exists to prevent: insert-only meant a re-scan skipped
+    every row it had already seen, so a column added afterwards stayed empty
+    for the whole of history and its panel rendered blank forever."""
+    path = tmp_path / "history.db"
+    _legacy_db(path)
+    with Store(path) as db:
+        # The legacy row predates prompt_run entirely.
+        assert db.records()[0].prompt_run == ""
+        db.ingest(scan.ScanResult(records=[a_record("old1", prompt_run="p1")]))
+        assert db.records()[0].prompt_run == "p1"
+
+
+def test_a_value_already_recorded_is_never_overwritten(tmp_path):
+    """The other half of the guard. Backfilling an empty column records a
+    fact for the first time; replacing one that is already there would be
+    the mutation ADR-0001 rules out."""
+    with Store(":memory:") as db:
+        db.ingest(scan.ScanResult(records=[a_record("m1", prompt_run="first")]))
+        db.ingest(scan.ScanResult(records=[a_record("m1", prompt_run="second")]))
+        assert db.records()[0].prompt_run == "first"
+
+
+def test_backfilling_still_reports_no_new_rows(tmp_path):
+    """Filling a blank must not read as fresh usage — the refresh counter and
+    every 'nothing changed' path hang off this number."""
+    with Store(":memory:") as db:
+        assert db.ingest(scan.ScanResult(records=[a_record("m1")])) == 1
+        assert db.ingest(scan.ScanResult(records=[a_record("m1", prompt_run="p1")])) == 0
+
+
+def test_numbers_are_left_alone_even_when_they_are_zero(tmp_path):
+    """A measured 0 is a measurement. Only columns whose empty string means
+    'never recorded' are backfillable, so no numeric column may move."""
+    with Store(":memory:") as db:
+        db.ingest(scan.ScanResult(records=[a_record("m1", output_tokens=0)]))
+        db.ingest(scan.ScanResult(records=[a_record("m1", output_tokens=999)]))
+        assert db.records()[0].output_tokens == 0
+
+
+def test_adding_a_column_rewinds_every_scanned_file(tmp_path):
+    """A backfill needs something to backfill from, and incremental reads
+    resume past the records that need filling. Adding a column rewinds the
+    offsets so the next pass re-reads each transcript from the top."""
+    path = tmp_path / "history.db"
+    _legacy_db(path)
+    with Store(path) as db:
+        db.ingest(
+            scan.ScanResult(
+                records=[],
+                file_stats={"a.jsonl": scan.FileState(size=10, mtime=1.0, offset=10, head="h")},
+            )
+        )
+    # Reopening with no schema change must leave the offset where it was.
+    with Store(path) as db:
+        assert db.file_stats()["a.jsonl"].offset == 10
+
+    import sqlite3
+
+    conn = sqlite3.connect(str(path))
+    conn.execute("ALTER TABLE usage RENAME COLUMN prompt_run TO prompt_run_old")
+    conn.commit()
+    conn.close()
+
+    with Store(path) as db:
+        assert db.file_stats()["a.jsonl"].offset == 0
+        assert db.file_stats()["a.jsonl"].head == ""
