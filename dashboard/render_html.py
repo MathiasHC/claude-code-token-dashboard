@@ -149,7 +149,7 @@ table.grid > tbody > tr > td.pad { background:transparent; border:0; }
    with the sheet open is understood by every browser ever shipped, marks its
    own state, and survives the 30-second reload because the state lives in
    the URL that the reload re-requests. */
-/* A maroon band with dashed gold edges, forked at the free end. The fork is
+/* A maroon band with solid gold edges, forked at the free end. The fork is
    two border triangles rather than a picture: an element with no width or
    height, a solid top and bottom border and a *transparent* left one, is a
    swallowtail — and because the notch is transparent rather than painted in
@@ -160,7 +160,7 @@ table.grid > tbody > tr > td.pad { background:transparent; border:0; }
 a.ribbon { position:fixed; top:100px; right:0; z-index:40;
            width:46px; height:42px;
            background:#7a1520;
-           border-top:2px dashed #e3b341; border-bottom:2px dashed #e3b341;
+           border-top:2px solid #e3b341; border-bottom:2px solid #e3b341;
            border-left:0; border-right:0;
            text-decoration:none; }
 a.ribbon .rtrophy { display:block; margin:8px auto 0 auto; }
