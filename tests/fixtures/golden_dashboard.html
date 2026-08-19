@@ -146,24 +146,30 @@ a.ribbon { position:fixed; top:100px; right:0; z-index:40;
            text-decoration:none; }
 a.ribbon .rtrophy { display:block; margin:8px auto 0 auto; }
 /* Behind: the gold rim, spanning the band's whole outer height. In front:
-   the maroon, spanning its content height exactly — 21+21 against the band's
-   42px, starting at the padding edge — so the gold left showing is the same
-   2px the band's own border is, and the two maroons meet flush instead of
-   stepping 1px at the join.
+   the maroon, spanning its content height. Both halves of each are half that
+   height, because a border triangle's height is its top plus its bottom.
+
+   The numbers only read correctly against the border-box reset at the top of
+   this stylesheet: `height:42px` on the band is the OUTER height, so the rim
+   is 21+21 = 42 and the content it encloses is 42 - 2 - 2 = 38, hence the
+   maroon at 19+19. Deriving them as if the box were content-box makes the
+   rim 46px, and it hangs 4px below the band — which is exactly the bug this
+   replaced, invisible at page scale and obvious the moment anything is
+   measured.
 
    A diagonal cannot match a horizontal on both counts: holding the rim at 2px
    where they meet makes it read a little under 2px along the slope, and
-   holding it at 2px along the slope would put a 3px step back at the join.
-   The join is the part the eye lands on, so that is the one that is kept
-   honest. Both sit to the left of the band, hence the negative placement. */
+   holding it at 2px along the slope would put a step back at the join. The
+   join is the part the eye lands on, so that is the one that is kept honest.
+   Both sit to the left of the band, hence the negative placement. */
 a.ribbon .tailedge { position:absolute; left:-19px; top:-2px;
                      width:0; height:0; border-left:19px solid transparent;
-                     border-top:23px solid #e3b341;
-                     border-bottom:23px solid #e3b341; }
+                     border-top:21px solid #e3b341;
+                     border-bottom:21px solid #e3b341; }
 a.ribbon .tail { position:absolute; left:-17px; top:0;
                  width:0; height:0; border-left:17px solid transparent;
-                 border-top:21px solid #7a1520;
-                 border-bottom:21px solid #7a1520; }
+                 border-top:19px solid #7a1520;
+                 border-bottom:19px solid #7a1520; }
 /* Translucent rather than opaque, so the dashboard stays faintly visible
    underneath and the sheet reads as sitting on top of it rather than as a
    different page. */
