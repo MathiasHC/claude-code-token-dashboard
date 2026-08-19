@@ -44,9 +44,10 @@ mistake the type system now prevents:
 - **Scoped** — everything below the selector: where the money goes, the
   breakdowns, the bands, the daily chart. Re-computed for the selected range.
 
-The all-time leaderboards are global despite sitting at the very bottom of the
-page, which is the one place the "below the selector means scoped" shorthand
-breaks. The section heading says ALL TIME for exactly that reason.
+The all-time leaderboards are global, which is the one place the "below the
+selector means scoped" shorthand breaks. They are not in the page at all
+until asked for — see **Sheet** — and the sheet heading says ALL TIME for
+exactly that reason.
 
 ## Range view
 
@@ -74,11 +75,25 @@ An all-time top three: `models.Leaderboard`, built by `dashboard/leaderboards.py
 and reached as `DashboardData.leaderboards`. Twelve of them, global by
 construction — see **Scope**.
 
-Each carries a `unit` naming how the renderer should format its numbers
+Each carries an `icon` naming its drawing and a `unit` naming how the
+renderer should format its numbers
 (`money`, `count`, `duration`, `tokens`, `clock`, `days`) rather than
 pre-formatted strings, so a board's placings can be asserted against without
 pinning display format into a test. A board's `note` is a fact that belongs
 with it but is not a placing — the earliest start under the latest nights.
+
+## Sheet
+
+The overlay the leaderboards live in, opened by the **ribbon** — the trophy tab
+pinned 100px down the right edge — and closed by the CLOSE control or by
+tapping the scrim behind it.
+
+Open or closed is view state, and it travels in the query string
+(`?boards=open`) exactly as the selected range does. Not a CSS or JavaScript
+toggle: the page carries no JavaScript by design, and state in the URL is the
+only kind that survives the page reloading itself every thirty seconds. It
+also means the two pieces of view state compose — opening the sheet keeps the
+range, and closing it returns to it.
 
 ## Api-equivalent cost
 

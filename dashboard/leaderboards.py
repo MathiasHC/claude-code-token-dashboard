@@ -174,10 +174,11 @@ def build(
     priciest_prompts = sorted(prompts.values(), key=lambda p: -p["cost"])[:TOP]
     misses.sort(key=lambda m: (-m[0], m[1]))
 
-    def weekday_board(title: str, scores: dict, unit: str) -> Leaderboard:
+    def weekday_board(title: str, scores: dict, unit: str, icon: str) -> Leaderboard:
         return Leaderboard(
             title=title,
             unit=unit,
+            icon=icon,
             leaders=[
                 Leader(label=calendar.day_name[day], value=score)
                 for day, score in _top(scores)
@@ -185,16 +186,18 @@ def build(
         )
 
     return [
-        weekday_board("WEEKDAY · SPEND", weekday_cost, MONEY),
+        weekday_board("WEEKDAY · SPEND", weekday_cost, MONEY, "coin"),
         weekday_board(
             "WEEKDAY · SESSIONS",
             {day: float(len(seen)) for day, seen in weekday_sessions.items()},
             COUNT,
+            "terminal",
         ),
-        weekday_board("WEEKDAY · MESSAGES", weekday_messages, COUNT),
+        weekday_board("WEEKDAY · MESSAGES", weekday_messages, COUNT, "bubble"),
         Leaderboard(
             title="MONTH · SPEND",
             unit=MONEY,
+            icon="calendar",
             leaders=[
                 Leader(label=_month_label(month), value=cost)
                 for month, cost in _top(month_cost)
@@ -203,6 +206,7 @@ def build(
         Leaderboard(
             title="DATE · SPEND",
             unit=MONEY,
+            icon="calendar",
             leaders=[
                 Leader(label=_date_label(day), value=cost)
                 for day, cost in _top(day_cost)
@@ -211,6 +215,7 @@ def build(
         Leaderboard(
             title="LONGEST PROMPT",
             unit=DURATION,
+            icon="hourglass",
             leaders=[
                 Leader(
                     label=_date_label(dates.local_day(prompt["ts"])),
@@ -227,6 +232,7 @@ def build(
         Leaderboard(
             title="PRICIEST PROMPT",
             unit=MONEY,
+            icon="coin",
             leaders=[
                 Leader(
                     label=_date_label(dates.local_day(prompt["ts"])),
@@ -239,6 +245,7 @@ def build(
         Leaderboard(
             title="LONGEST STREAK",
             unit=DAYS,
+            icon="flame",
             leaders=[
                 Leader(label=_span_label(start, end), value=(end - start).days + 1)
                 for start, end in sorted(
@@ -249,6 +256,7 @@ def build(
         Leaderboard(
             title="LONGEST BREAK",
             unit=DAYS,
+            icon="pause",
             leaders=[
                 Leader(
                     label=f"{before:%d %b} → {after:%d %b %Y}",
@@ -262,6 +270,7 @@ def build(
         Leaderboard(
             title="LATEST NIGHT",
             unit=CLOCK,
+            icon="moon",
             leaders=[
                 Leader(label=_date_label(day), value=(hour + DAY_STARTS_AT) % 24)
                 for day, hour in _top(latest)
@@ -276,6 +285,7 @@ def build(
         Leaderboard(
             title="BIGGEST CACHE MISS",
             unit=TOKENS,
+            icon="crack",
             leaders=[
                 Leader(label=_date_label(day), value=tokens, note=reason)
                 for tokens, day, reason in misses[:TOP]
@@ -285,6 +295,7 @@ def build(
         Leaderboard(
             title="MOST SUBAGENTS",
             unit=COUNT,
+            icon="agents",
             leaders=[
                 Leader(label=titles.get(session, session[:8] or "(session)"), value=count)
                 for session, count in _top(subagent_messages)

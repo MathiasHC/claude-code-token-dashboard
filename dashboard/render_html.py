@@ -41,8 +41,13 @@ table.hero td { vertical-align:top; }
 .hvalue { font-size:40px; font-weight:bold; line-height:46px; }
 .hsub { font-size:11px; color:#8b949e; }
 .hdelta { font-size:11px; color:#8b949e; }
+/* The right padding is the leaderboard ribbon's width. The ribbon is
+   fixed 100px down the right edge, which is exactly where the month
+   comparison ends, and without the gap it runs underneath and loses its
+   last few words. */
 .maxrow { background:#161b22; border:1px solid #30363d;
-          padding:6px 10px; margin-bottom:6px; font-size:13px; color:#8b949e; }
+          padding:6px 112px 6px 10px; margin-bottom:6px; font-size:13px;
+          color:#8b949e; }
 .maxrow .mult { font-size:22px; font-weight:bold; color:#3fb950; }
 .maxrow .mom { float:right; }
 /* border-spacing matches table.grid so the bands line up with the panels
@@ -133,6 +138,60 @@ td.lval { width:74px; text-align:right; color:#e6edf3; }
 /* A ragged final row must not stretch the boards that are in it, so the
    empty cells stay in the table and only lose their chrome. */
 table.grid > tbody > tr > td.pad { background:transparent; border:0; }
+
+/* The leaderboard ribbon, and the sheet it opens.
+
+   Server-rendered from a query string rather than toggled in the page. There
+   is no JavaScript here and pointer-state selectors are banned by the
+   compatibility lint, which leaves the CSS :target trick — and that would
+   have to hide the boards by default, so a browser without it would have no
+   way to reach them at all. A link that asks the server for the same page
+   with the sheet open is understood by every browser ever shipped, marks its
+   own state, and survives the 30-second reload because the state lives in
+   the URL that the reload re-requests. */
+a.ribbon { position:fixed; top:100px; right:0; z-index:40; width:92px;
+           background:#161b22; border:1px solid #30363d; border-right:0;
+           padding:9px 6px 8px 6px; text-align:center; text-decoration:none;
+           color:#e6edf3; font-size:10px; letter-spacing:1.5px; }
+a.ribbon .rlabel { display:block; margin-top:3px; line-height:13px; }
+/* Translucent rather than opaque, so the dashboard stays faintly visible
+   underneath and the sheet reads as sitting on top of it rather than as a
+   different page. */
+.overlay { position:fixed; top:0; left:0; width:100%; height:100%; z-index:60;
+           background:rgba(1,4,9,0.93); }
+a.scrim { position:absolute; top:0; left:0; width:100%; height:100%;
+          text-decoration:none; }
+.sheet { position:absolute; top:34px; left:26px; right:26px;
+         background:#0d1117; border:1px solid #30363d; padding:9px 11px 11px 11px; }
+.sheethead { font-size:11px; letter-spacing:1.5px; color:#e6edf3;
+             padding-bottom:7px; }
+.sheethead .quiet { letter-spacing:0; color:#8b949e; }
+a.close { float:right; color:#8b949e; text-decoration:none; font-size:10px;
+          letter-spacing:1.5px; border:1px solid #30363d; padding:2px 9px; }
+
+/* Placings. The medal is a coloured disc rather than a drawing: at 17px a
+   drawn medal is a smudge, and thirty-six inline SVGs would cost more page
+   than the whole rest of the section. */
+.bicon { vertical-align:-4px; margin-right:5px; }
+td.rank { width:24px; }
+.medal { position:relative; display:inline-block; width:17px; height:17px;
+         line-height:17px; border-radius:9px; text-align:center;
+         font-size:10px; color:#0d1117; }
+.medal1 { background:#e3b341; }
+.medal2 { background:#c9d1d9; }
+.medal3 { background:#c08040; }
+.medal .num { position:relative; }
+/* First place catches the light every few seconds. Opacity only, same as the
+   card icons, and for the same reason: if it never runs you are left with a
+   plain gold disc, which is a perfectly good outcome. */
+.gleam { position:absolute; left:0; top:0; width:17px; height:17px;
+         border-radius:9px; background:#fff6cc; opacity:0;
+         -webkit-animation:gleam 2.6s ease-in-out infinite;
+                 animation:gleam 2.6s ease-in-out infinite; }
+@-webkit-keyframes gleam { 0%,72%,100% { opacity:0 } 84% { opacity:0.85 } }
+@keyframes gleam { 0%,72%,100% { opacity:0 } 84% { opacity:0.85 } }
+td.barrow { padding:0 0 5px 0; }
+td.barrow .bar, td.barrow .fill { height:6px; }
 
 /* Card icons. Each is a fixed outline plus up to three frames of the one
    moving part, cross-faded — a flipbook.
@@ -804,6 +863,90 @@ def _skill_runs(runs) -> str:
     return "".join(out)
 
 
+#: Rendered size of a board glyph. Small enough to sit inside an 11px
+#: heading without pushing the row apart.
+BOARD_ICON_PX = 18
+
+#: One drawing per board subject, in the same line-art language as the
+#: footprint cards but static: twelve animations competing for attention in
+#: one sheet is noise, and the gleam on first place is the moving part that
+#: is meant to be noticed.
+_BOARD_ICONS = {
+    # A coin, edge-on stroke through the middle for the currency mark.
+    "coin": (
+        "#d29922",
+        '<circle cx="12" cy="12" r="8.2"/><path d="M12 7v10"/>'
+        '<path d="M14.4 9.4c-.5-.7-1.4-1.1-2.4-1.1-1.4 0-2.5.7-2.5 1.8 0 2.4 4.9 1.3 4.9 3.7 '
+        '0 1.1-1.1 1.8-2.5 1.8-1 0-1.9-.4-2.4-1.1"/>',
+    ),
+    "calendar": (
+        "#58a6ff",
+        '<path d="M4 6.6h16v13.4H4zM4 10.8h16M8.2 3.6v4M15.8 3.6v4"/>'
+        '<path d="M7.6 13.8h2.2v2.2H7.6z"/>',
+    ),
+    "terminal": (
+        "#3fb950",
+        '<path d="M3.4 5h17.2v14H3.4zM7 9.6l2.8 2.4L7 14.4M12.6 15h4.6"/>',
+    ),
+    "bubble": (
+        "#a371f7",
+        '<path d="M4 5.4h16v10.8H9.4L5.2 19.8v-3.6H4z"/><path d="M7.6 9h8.8M7.6 12.2h5.4"/>',
+    ),
+    "hourglass": (
+        "#db6d28",
+        '<path d="M7 3.6h10M7 20.4h10"/>'
+        '<path d="M8.2 3.6c0 4 3.8 5.4 3.8 8.4s-3.8 4.4-3.8 8.4"/>'
+        '<path d="M15.8 3.6c0 4-3.8 5.4-3.8 8.4s3.8 4.4 3.8 8.4"/>',
+    ),
+    "flame": (
+        "#f85149",
+        '<path d="M12 3.4c3.4 3.9 5.4 6.2 5.4 9.4a5.4 5.4 0 0 1-10.8 0c0-2 .8-3.4 2-4.8'
+        '.3 1.5 1.1 2.3 1.9 2.3 1.2 0 1.8-1.2 1.5-6.9z"/>',
+    ),
+    "pause": (
+        "#8b949e",
+        '<circle cx="12" cy="12" r="8.4"/><path d="M10 8.8v6.4M14 8.8v6.4"/>',
+    ),
+    "moon": (
+        "#79c0ff",
+        '<path d="M20.2 14.4A8.4 8.4 0 0 1 9.6 3.8a8.4 8.4 0 1 0 10.6 10.6z"/>'
+        '<path d="M17.4 3.2l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
+    ),
+    # A stack with a fault line through it — the prefix that had to be read
+    # again because it no longer lined up.
+    "crack": (
+        "#f0883e",
+        '<path d="M4 6.2h16M4 17.8h16"/><path d="M13.4 6.2l-3 4.2h3.4l-3.4 7.4"/>'
+        '<path d="M4.6 12h3.2M19.4 12h-3.2"/>',
+    ),
+    "agents": (
+        "#f778ba",
+        '<circle cx="12" cy="5.4" r="2.4"/><circle cx="5.6" cy="18.4" r="2.4"/>'
+        '<circle cx="18.4" cy="18.4" r="2.4"/>'
+        '<path d="M12 7.8v4.4M12 12.2H5.6v3.8M12 12.2h6.4v3.8"/>',
+    ),
+}
+
+
+def _glyph(kind: str) -> str:
+    """The drawing beside a board heading, or nothing for an unknown key.
+
+    Silent rather than raising: a board naming a picture that does not exist
+    should lose its picture, not take the page down.
+    """
+    entry = _BOARD_ICONS.get(kind)
+    if entry is None:
+        return ""
+    colour, outline = entry
+    return (
+        f'<svg class="bicon" width="{BOARD_ICON_PX}" height="{BOARD_ICON_PX}" '
+        'viewBox="0 0 24 24" fill="none" '
+        f'stroke="{colour}" stroke-width="1.6" stroke-linecap="round" '
+        'stroke-linejoin="round" aria-hidden="true">'
+        f"{outline}</svg>"
+    )
+
+
 def _tokens(value: float) -> str:
     """Token counts at a glance. Nobody reads 759,426 off a wall display."""
     if value >= 1_000_000:
@@ -826,50 +969,141 @@ _LEADER_UNITS = {
 }
 
 
+#: Gold, silver, bronze — the medal disc and the bar under it share a colour
+#: so a placing reads as one object rather than two.
+_MEDAL_FILL = ("#e3b341", "#c9d1d9", "#c08040")
+
+#: Units whose magnitudes sit on a ratio scale, and so can carry a bar. The
+#: clock is deliberately absent: 02:00 is not twice 01:00, and a bar twice
+#: the length would say it was.
+_SCALED_UNITS = frozenset({"money", "count", "duration", "tokens", "days"})
+
+
 def _leader_rows(board) -> str:
     if not board.leaders:
         return '<div class="note">not enough history yet</div>'
     render_value = _LEADER_UNITS.get(board.unit, _LEADER_UNITS["count"])
+    top = max((leader.value for leader in board.leaders), default=0.0)
+    scaled = board.unit in _SCALED_UNITS and top > 0
     out = ['<table class="lrows">']
     for place, leader in enumerate(board.leaders, start=1):
         note = f' <span class="lnote">{escape(leader.note)}</span>' if leader.note else ""
+        gleam = '<span class="gleam"></span>' if place == 1 else ""
         out.append(
             "<tr>"
-            f'<td class="rank rank{place}">{place}</td>'
+            f'<td class="rank"><span class="medal medal{place}">{gleam}'
+            f'<span class="num">{place}</span></span></td>'
             f'<td class="lname">{escape(leader.label)}{note}</td>'
             f'<td class="lval">{escape(render_value(leader.value))}</td>'
             "</tr>"
         )
+        if scaled:
+            # Against the leader rather than against the sum: these are three
+            # placings out of a long tail, so shares of a visible total would
+            # not add up to anything and the bars would all be slivers.
+            width = max(0.0, min(100.0, leader.value / top * 100))
+            out.append(
+                '<tr><td class="barrow" colspan="3"><div class="bar">'
+                f'<div class="fill" style="width:{width:.1f}%;'
+                f'background:{_MEDAL_FILL[place - 1]}"></div>'
+                "</div></td></tr>"
+            )
     out.append("</table>")
     if board.note:
         out.append(f'<div class="note">{escape(board.note)}</div>')
     return "".join(out)
 
 
-def _leaderboards(boards, columns: int) -> str:
-    """The all-time block, laid out `columns` boards to a row.
+#: Query key that opens the sheet, alongside ranges.QUERY_KEY. Its value is
+#: checked rather than merely present so a bookmarked "?boards=" cannot
+#: half-open anything.
+BOARDS_QUERY_KEY = "boards"
+BOARDS_OPEN = "open"
 
-    The heading says ALL TIME because it has to. Every other panel below the
-    selector re-scopes when a range is picked and these do not, so without
-    the caveat the section reads as a range that silently refused to apply.
+#: A cup with handles, on a plinth.
+_TROPHY = (
+    '<path d="M7.2 3.8h9.6v4.8a4.8 4.8 0 0 1-9.6 0z"/>'
+    '<path d="M7.2 5.2H4.8v1.5A3.4 3.4 0 0 0 8.2 10M16.8 5.2h2.4v1.5A3.4 3.4 0 0 1 15.8 10"/>'
+    '<path d="M12 13.4v3.2M8.8 20.2h6.4M9.4 20.2c0-1.9 1.1-3.2 2.6-3.2s2.6 1.3 2.6 3.2"/>'
+)
+
+
+def _page_href(base_path: str, range_key: str, *, boards: bool) -> str:
+    """The page's own URL with the state that belongs in it.
+
+    Both bits of view state travel in the query string, so a reload — the
+    automatic one included — lands on the same view rather than resetting it.
+    """
+    params = []
+    if range_key != ranges.DEFAULT.key:
+        params.append(f"{ranges.QUERY_KEY}={range_key}")
+    if boards:
+        params.append(f"{BOARDS_QUERY_KEY}={BOARDS_OPEN}")
+    return f"{base_path}?{'&'.join(params)}" if params else base_path
+
+
+def _ribbon(view: RangeView, base_path: str) -> str:
+    """The tab that opens the sheet, pinned below the hero row on the right.
+
+    Fixed rather than in flow so it stays reachable at any scroll position,
+    and 100px down so it clears the title bar and the hero row's top edge
+    instead of sitting on top of the all-time figure.
+    """
+    href = _page_href(base_path, view.key, boards=True)
+    return (
+        f'<a class="ribbon" href="{escape(href)}">'
+        '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" '
+        'stroke="#e3b341" stroke-width="1.4" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg>'
+        '<span class="rlabel">LEADER-<br>BOARDS</span></a>'
+    )
+
+
+def _leaderboards(boards, columns: int) -> str:
+    """The boards laid out `columns` to a row, for the sheet.
+
+    The heading says ALL TIME because it has to. Every other panel on the
+    page re-scopes when a range is picked and these do not, so without the
+    caveat the sheet reads as a range that silently refused to apply.
     """
     if not boards:
         return ""
-    out = [
-        '<div class="section">ALL-TIME LEADERBOARDS'
-        ' <span class="quiet">&middot; top three ever &middot; '
-        "not affected by the range above</span></div>",
-        '<table class="grid"><tbody>',
-    ]
+    out = ['<table class="grid"><tbody>']
     for start in range(0, len(boards), columns):
         row = boards[start : start + columns]
         out.append("<tr>")
         for board in row:
-            out.append(f"<td><h2>{escape(board.title)}</h2>{_leader_rows(board)}</td>")
+            out.append(
+                f"<td><h2>{_glyph(board.icon)}{escape(board.title)}</h2>"
+                f"{_leader_rows(board)}</td>"
+            )
         out.extend('<td class="pad"></td>' for _ in range(columns - len(row)))
         out.append("</tr>")
     out.append("</tbody></table>")
     return "".join(out)
+
+
+def _sheet(data: DashboardData, view: RangeView, base_path: str, columns: int) -> str:
+    """The whole overlay: scrim, sheet, boards.
+
+    The scrim is a link, so tapping anywhere outside the sheet closes it —
+    the gesture people expect from a modal, and the only way to offer it
+    without a click handler.
+    """
+    if not data.leaderboards:
+        return ""
+    close = escape(_page_href(base_path, view.key, boards=False))
+    return (
+        '<div class="overlay">'
+        f'<a class="scrim" href="{close}" aria-label="close"></a>'
+        '<div class="sheet">'
+        f'<div class="sheethead"><a class="close" href="{close}">CLOSE</a>'
+        "ALL-TIME LEADERBOARDS"
+        ' <span class="quiet">&middot; top three ever &middot; '
+        "not affected by the range behind this</span></div>"
+        f"{_leaderboards(data.leaderboards, columns)}"
+        "</div></div>"
+    )
 
 
 def _cache_note(view: RangeView) -> str:
@@ -933,6 +1167,7 @@ def render(
     refresh_seconds: int = 30,
     base_path: str = "",
     leaderboard_columns: int | None = None,
+    boards_open: bool = False,
 ) -> str:
     banner = f'<div class="warn">{escape(warning)}</div>' if warning else ""
     view = data.scoped
@@ -1004,6 +1239,7 @@ def render(
 {_trivia(view)}
 {_worked_band(view)}
 {_footprint_note(view)}
-{_leaderboards(data.leaderboards, leaderboard_columns or LEADERBOARD_COLUMNS)}
+{_ribbon(view, base_path)}
+{_sheet(data, view, base_path, leaderboard_columns or LEADERBOARD_COLUMNS) if boards_open else ""}
 </body></html>
 """

@@ -103,15 +103,17 @@ class App:
     def ingest_count(self) -> int:
         return self.freshness.ingest_count
 
-    def page(self, range_key: str | None = None) -> str:
+    def page(self, range_key: str | None = None, boards: str | None = None) -> str:
         # An unknown or malformed range falls back to the default rather than
-        # erroring: it is a stale bookmark, not an attack.
+        # erroring: it is a stale bookmark, not an attack. Same for `boards`:
+        # anything but the one value it takes leaves the sheet shut.
         current = self.freshness.view(ranges.resolve(range_key))
         return render_html.render(
             current.data,
             warning=current.warning,
             base_path=self.base_path,
             refresh_seconds=self.refresh_seconds,
+            boards_open=(boards == render_html.BOARDS_OPEN),
         )
 
 
@@ -143,8 +145,10 @@ def build_handler(app: App, token: str) -> type[BaseHTTPRequestHandler]:
             if prefix != "/d" or not tokens.matches(token, candidate):
                 self.send_not_found()
                 return
-            requested = parse_qs(query).get(ranges.QUERY_KEY, [None])[0]
-            body = app.page(requested).encode("utf-8")
+            params = parse_qs(query)
+            requested = params.get(ranges.QUERY_KEY, [None])[0]
+            boards = params.get(render_html.BOARDS_QUERY_KEY, [None])[0]
+            body = app.page(requested, boards).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
