@@ -163,7 +163,10 @@ a.ribbon { position:fixed; top:100px; right:0; z-index:40;
            border-top:2px solid #e3b341; border-bottom:2px solid #e3b341;
            border-left:0; border-right:0;
            text-decoration:none; }
-a.ribbon .rtrophy { display:block; margin:8px auto 0 auto; }
+/* 6px, not a guess: the band's content box is 38px and the trophy is
+   26px, so 6px above leaves 6px below and the cup sits centred. The
+   `auto` either side is what centres it horizontally. */
+a.ribbon .rtrophy { display:block; margin:6px auto 0 auto; }
 /* Behind: the gold rim, spanning the band's whole outer height. In front:
    the maroon, spanning its content height. Both halves of each are half that
    height, because a border triangle's height is its top plus its bottom.
