@@ -1,9 +1,21 @@
 """Render the dashboard from synthetic demo data.
 
-Used to produce the README screenshot, and to preview the layout without
+Used to produce the README screenshots, and to preview the layout without
 having any real usage on the machine:
 
     python3 tools/demo_page.py /tmp/demo.html
+
+There are two screenshots, and the second one needs a deliberate height.
+`docs/screenshot.jpg` is the whole page, so it is captured at whatever
+`document.body.scrollHeight` reports. `docs/screenshot-leaderboards.jpg` is
+the sheet, which is `position:fixed` and therefore as tall as the viewport it
+is shot in — capture it at the sheet's own bottom edge plus a small margin:
+
+    document.querySelector(".sheet").getBoundingClientRect().bottom
+
+At the time of writing that lands at 648px, and the image is shot at 668.
+Shooting it at the page height instead leaves 600px of dimmed dashboard under
+the sheet, which reads as an unpolished black band rather than as an overlay.
 
 Every figure is invented, but nothing here is hand-written: this builds a
 few thousand fake `UsageRecord`s and runs them through the real
