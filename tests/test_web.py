@@ -540,3 +540,37 @@ def test_the_server_still_rejects_a_genuinely_wrong_token(server):
     """Forgiving transcription must not become forgiving the secret."""
     for wrong in ("/d/tok124", "/d/tok12", "/d/tok1234", "/d/", "/d/x"):
         assert get(server, wrong)[0] == 404, wrong
+
+
+# --- the leaderboard sheet ----------------------------------------------
+
+
+def test_the_query_string_opens_the_leaderboard_sheet(tmp_path):
+    app = make_app(tmp_path)
+    assert "ALL-TIME LEADERBOARDS" not in app.page()
+    assert "ALL-TIME LEADERBOARDS" in app.page(None, "open")
+
+
+def test_any_other_value_leaves_the_sheet_shut(tmp_path):
+    """A stale or half-typed bookmark must not half-open anything."""
+    app = make_app(tmp_path)
+    for value in ("", "1", "true", "OPEN", "closed"):
+        assert "ALL-TIME LEADERBOARDS" not in app.page(None, value), value
+
+
+def test_the_sheet_and_the_range_are_independent(tmp_path):
+    """Opening the boards must not reset the dashboard behind them, and the
+    boards are all-time either way."""
+    page = make_app(tmp_path).page("7d", "open")
+    assert "LAST 7 DAYS" in page
+    assert "ALL-TIME LEADERBOARDS" in page
+
+
+def test_opening_the_sheet_does_not_trigger_a_fresh_scan(tmp_path):
+    """It is the same data, presented differently — reaching for it must not
+    cost a re-read of every transcript."""
+    app = make_app(tmp_path, min_ingest_interval=10_000.0)
+    app.page()
+    assert app.ingest_count == 1
+    app.page(None, "open")
+    assert app.ingest_count == 1

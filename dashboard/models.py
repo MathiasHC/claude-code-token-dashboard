@@ -159,6 +159,11 @@ class Leaderboard:
     #: because a board whose rows disagreed about their unit would be
     #: ranking incomparable things.
     unit: str
+    #: Which drawing sits beside the heading: a key in
+    #: render_html._BOARD_ICONS. Named here rather than derived from the
+    #: title in the renderer, so a board cannot be retitled into having the
+    #: wrong picture.
+    icon: str = ""
     leaders: list[Leader] = field(default_factory=list)
     #: An extra fact that belongs with this board but is not a placing —
     #: the counterpart figure, e.g. the earliest start under the latest

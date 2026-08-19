@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from dashboard import aggregate, render_html
+from dashboard import aggregate, ranges, render_html
 from dashboard.footprint import Footprint
 from dashboard.models import (
     Bar,
@@ -681,11 +681,11 @@ def test_the_three_breakdowns_share_a_row_and_the_chart_spans_the_width():
     out = render_html.render(data)
     assert "</td>\n<td><h2>BY SKILL" in out
     assert "</td>\n<td><h2>TOP SESSIONS" in out
-    # The chart is alone in the last grid table before the all-time
-    # section, so it spans the full width. Scoped above that section
-    # because the leaderboards are grid tables too.
-    scoped_part = out.split('<div class="section">')[0]
-    last = scoped_part.rsplit('<table class="grid">', 1)[1]
+    # The chart is alone in the last grid table, so it spans the full
+    # width. The leaderboards are grid tables too, but they live in the
+    # sheet, which is not rendered unless it is asked for.
+    assert '<div class="sheet">' not in out
+    last = out.rsplit('<table class="grid">', 1)[1]
     assert last.count("<h2>") == 1
     assert "DAILY" in last
 
@@ -697,13 +697,13 @@ def test_the_leaderboard_section_says_it_ignores_the_range():
     """Every other panel below the selector re-scopes and these do not, so
     without the caveat the section reads as a range that silently refused to
     apply."""
-    out = render_html.render(_golden_data())
+    out = render_html.render(_golden_data(), boards_open=True)
     assert "ALL-TIME LEADERBOARDS" in out
-    assert "not affected by the range above" in out
+    assert "not affected by the range behind this" in out
 
 
 def test_each_unit_gets_its_own_formatting():
-    out = render_html.render(_golden_data())
+    out = render_html.render(_golden_data(), boards_open=True)
     assert "$1,025.83" in out  # money
     assert ">48<" in out  # count
     assert "3h 2m" in out  # duration, from 10_920 seconds
@@ -715,12 +715,12 @@ def test_a_board_is_laid_out_at_the_requested_width():
     """The layout is a parameter rather than a constant read at import time,
     so a page can be rendered at either width without patching a global."""
     data = _golden_data()
-    four = render_html.render(data, leaderboard_columns=4)
-    three = render_html.render(data, leaderboard_columns=3)
+    four = render_html.render(data, leaderboard_columns=4, boards_open=True)
+    three = render_html.render(data, leaderboard_columns=3, boards_open=True)
     def cells(out):
         """Board cells and padding cells in the all-time section. Together
         they must fill whole rows, which is what proves the width."""
-        section = out.split('<div class="section">')[1]
+        section = out.split('<div class="sheet">')[1]
         return section.count("<td><h2>"), section.count('<td class="pad">')
 
     assert cells(four) == (5, 3)  # 5 boards + 3 pads = two rows of four
@@ -740,7 +740,7 @@ def test_a_single_day_is_not_one_days():
             )
         ],
     )
-    out = render_html.render(data)
+    out = render_html.render(data, boards_open=True)
     assert "1 day<" in out
     assert "1 days" not in out
 
@@ -750,13 +750,16 @@ def test_a_board_with_no_placings_says_so_rather_than_rendering_empty():
         _golden_data(),
         leaderboards=[Leaderboard(title="WEEKDAY · SPEND", unit="money")],
     )
-    out = render_html.render(data)
+    out = render_html.render(data, boards_open=True)
     assert "not enough history yet" in out
 
 
-def test_no_leaderboards_means_no_section_at_all():
-    out = render_html.render(dataclasses.replace(_golden_data(), leaderboards=[]))
+def test_no_leaderboards_means_no_sheet_even_when_asked_for_one():
+    out = render_html.render(
+        dataclasses.replace(_golden_data(), leaderboards=[]), boards_open=True
+    )
     assert "ALL-TIME LEADERBOARDS" not in out
+    assert '<div class="overlay">' not in out
 
 
 def test_a_session_title_on_a_board_is_escaped():
@@ -772,7 +775,7 @@ def test_a_session_title_on_a_board_is_escaped():
             )
         ],
     )
-    out = render_html.render(data)
+    out = render_html.render(data, boards_open=True)
     assert "<script>alert(1)</script>" not in out
     assert "&lt;script&gt;" in out
 
@@ -788,4 +791,108 @@ def test_a_board_naming_an_unknown_unit_still_renders():
             )
         ],
     )
-    assert "1,234" in render_html.render(data)
+    assert "1,234" in render_html.render(data, boards_open=True)
+
+
+# --- the ribbon and the sheet it opens -----------------------------------
+
+
+def test_the_ribbon_is_always_there_and_the_sheet_is_not():
+    """The boards live behind the ribbon now, which is what buys back the
+    page height they used to cost."""
+    closed = render_html.render(_golden_data())
+    assert 'class="ribbon"' in closed
+    assert '<div class="overlay">' not in closed
+    assert "ALL-TIME LEADERBOARDS" not in closed
+
+    opened = render_html.render(_golden_data(), boards_open=True)
+    assert 'class="ribbon"' in opened
+    assert '<div class="overlay">' in opened
+    assert "ALL-TIME LEADERBOARDS" in opened
+
+
+def test_the_ribbon_opens_the_sheet_and_the_sheet_closes_again():
+    """Open and close are the same URL with and without one query key, so
+    the state survives the page reloading itself."""
+    closed = render_html.render(_golden_data(), base_path="/d/tok")
+    assert 'href="/d/tok?boards=open"' in closed
+
+    opened = render_html.render(_golden_data(), base_path="/d/tok", boards_open=True)
+    # Two ways out: the CLOSE control and the scrim behind the sheet.
+    assert opened.count('href="/d/tok"') >= 2
+    assert 'class="scrim"' in opened
+
+
+def test_the_selected_range_survives_opening_and_closing_the_sheet():
+    """Opening the boards must not silently reset the dashboard behind them
+    to the default range."""
+    data = dataclasses.replace(
+        _golden_data(), scoped=dataclasses.replace(_golden_data().scoped, key="7d")
+    )
+    closed = render_html.render(data, base_path="/d/tok")
+    assert 'href="/d/tok?range=7d&amp;boards=open"' in closed
+
+    opened = render_html.render(data, base_path="/d/tok", boards_open=True)
+    assert 'href="/d/tok?range=7d"' in opened
+
+
+def test_the_default_range_is_left_out_of_the_url():
+    """Same rule the range selector already follows: the default range is
+    the bare path, not an explicit key."""
+    out = render_html.render(_golden_data(), base_path="/d/tok")
+    assert f'href="/d/tok?range={ranges.DEFAULT.key}' not in out
+
+
+def test_first_place_gleams_and_the_others_do_not():
+    out = render_html.render(_golden_data(), boards_open=True)
+    # Scoped to the sheet: the dashboard's own panels use <td><h2> too.
+    board = out.split('<div class="sheet">')[1].split("<td><h2>")[1]
+    assert board.count('class="gleam"') == 1
+    assert 'class="medal medal1"' in board
+    assert 'class="medal medal3"' in board
+
+
+def test_a_board_on_a_ratio_scale_gets_bars():
+    data = dataclasses.replace(
+        _golden_data(),
+        leaderboards=[
+            Leaderboard(
+                title="WEEKDAY · SPEND",
+                unit="money",
+                leaders=[Leader(label="Tuesday", value=100.0),
+                         Leader(label="Monday", value=50.0)],
+            )
+        ],
+    )
+    out = render_html.render(data, boards_open=True)
+    # Scaled against the leader, not against the sum: three placings out of a
+    # long tail would otherwise all be slivers.
+    assert "width:100.0%" in out
+    assert "width:50.0%" in out
+
+
+def test_the_clock_board_gets_no_bars():
+    """02:00 is not twice 01:00, and a bar twice as long would say it was."""
+    data = dataclasses.replace(
+        _golden_data(),
+        leaderboards=[
+            Leaderboard(
+                title="LATEST NIGHT",
+                unit="clock",
+                leaders=[Leader(label="04 Aug 2026", value=2),
+                         Leader(label="22 Jun 2026", value=1)],
+            )
+        ],
+    )
+    out = render_html.render(data, boards_open=True)
+    assert 'class="barrow"' not in out
+
+
+def test_every_board_carries_a_drawing():
+    """A board whose icon key is unknown loses its picture rather than
+    taking the page down."""
+    from dashboard import leaderboards as boards_module
+
+    for board in boards_module.build([], {}, {}):
+        assert board.icon in render_html._BOARD_ICONS, board.title
+    assert render_html._glyph("no-such-icon") == ""

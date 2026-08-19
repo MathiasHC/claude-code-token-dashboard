@@ -16,7 +16,11 @@ Everything stays on your machine: no account, no telemetry, no network calls.
 
 **No dependencies outside the Python standard library.**
 
-![The dashboard showing token spend broken down by model, project, skill and source, with machine time, environmental footprint and all-time leaderboards below](docs/screenshot.jpg)
+![The dashboard showing token spend broken down by model, project, skill and source, with machine time and environmental footprint below](docs/screenshot.jpg)
+
+The trophy ribbon on the right opens the all-time leaderboards over the top:
+
+![Twelve all-time leaderboards in a sheet over the dashboard, each top three with gold, silver and bronze placings](docs/screenshot-leaderboards.jpg)
 
 *Every figure above is synthetic demo data, not real usage. Reproduce it with
 `python3 tools/demo_page.py demo.html` and open the file — a way to see the
@@ -143,14 +147,16 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **1672px tall**, measured
+The page is laid out for a width of **1024** and is **1251px tall**, measured
 in a 1024-wide frame rather than estimated. Everything down to and including
 the daily chart fits a 1024×768 screen; the two card rows — machine time and
-footprint — and the all-time leaderboards below them need a scroll.
+footprint — need a short scroll.
 
-Set `render_html.LEADERBOARD_COLUMNS` to `4` to trade board width for 92px of
-height (1580px), or drop the leaderboards from `render()` entirely to get back
-to 1210px.
+The twelve all-time leaderboards do not sit in that height at all. They live
+behind the trophy ribbon pinned to the right edge, and open as a sheet over
+the dashboard. Inline they cost 420px; behind the ribbon they cost nothing
+until asked for. `render_html.LEADERBOARD_COLUMNS` sets how many boards go in
+a row inside the sheet.
 
 That is a deliberate trade rather than an oversight. The drawings are only
 worth having if they are big enough to read, and at 34px they were not —
@@ -412,20 +418,23 @@ reopening the bare URL.
   split.
 - **By source** — which Claude surface the spend came from. Only surfaces that
   keep token counts on disk can appear; see "Which surfaces are covered".
-- **All-time leaderboards** — twelve top-threes at the foot of the page:
-  spend, sessions and messages by weekday; the priciest month and date; the
-  longest and priciest prompt; streaks and breaks; latest night; biggest
-  cache miss; most subagents in one session. A **prompt** is one thing you
-  typed plus everything the machine did answering it, and its length is
-  machine time rather than elapsed, so a prompt left open overnight does not
-  win.
+- **All-time leaderboards** — twelve top-threes behind the trophy ribbon on
+  the right edge: spend, sessions and messages by weekday; the priciest month
+  and date; the longest and priciest prompt; streaks and breaks; latest
+  night; biggest cache miss; most subagents in one session. A **prompt** is
+  one thing you typed plus everything the machine did answering it, and its
+  length is machine time rather than elapsed, so a prompt left open overnight
+  does not win. Placings carry a bar scaled against the leader — except the
+  latest-night board, where 02:00 is not twice 01:00 and a bar would say it
+  was.
 - **Panels follow the selected range; the top row never does.** The hero row
   and the plan comparison are always the same four windows, whatever is
   selected. Everything below the range selector re-scopes, and each panel
   states its range in its heading. The default is the last 30 days. The one
-  exception is the leaderboard section, which is all-time and says so in its
+  exception is the leaderboard sheet, which is all-time and says so in its
   heading — a top three that re-ranked itself per range would not be a top
-  three.
+  three. Opening the sheet keeps whatever range the dashboard behind it is
+  on, and closing it puts you back there.
 - **caching saved** — what your cache reads *would* have cost at full input
   rates. A counterfactual, not money that was ever at stake: cache reads bill
   at 0.1×, so this is the 0.9× you never paid.
