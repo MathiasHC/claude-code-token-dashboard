@@ -41,12 +41,12 @@ table.hero td { vertical-align:top; }
 .hvalue { font-size:40px; font-weight:bold; line-height:46px; }
 .hsub { font-size:11px; color:#8b949e; }
 .hdelta { font-size:11px; color:#8b949e; }
-/* The right padding is the leaderboard ribbon's width. The ribbon is
-   fixed 100px down the right edge, which is exactly where the month
-   comparison ends, and without the gap it runs underneath and loses its
-   last few words. */
+/* The right padding is the leaderboard ribbon's width plus its tail. The
+   ribbon is fixed 100px down the right edge, which is exactly where the
+   month comparison ends, and without the gap it runs underneath and loses
+   its last few words. */
 .maxrow { background:#161b22; border:1px solid #30363d;
-          padding:6px 112px 6px 10px; margin-bottom:6px; font-size:13px;
+          padding:6px 74px 6px 10px; margin-bottom:6px; font-size:13px;
           color:#8b949e; }
 .maxrow .mult { font-size:22px; font-weight:bold; color:#3fb950; }
 .maxrow .mom { float:right; }
@@ -149,11 +149,31 @@ table.grid > tbody > tr > td.pad { background:transparent; border:0; }
    with the sheet open is understood by every browser ever shipped, marks its
    own state, and survives the 30-second reload because the state lives in
    the URL that the reload re-requests. */
-a.ribbon { position:fixed; top:100px; right:0; z-index:40; width:92px;
-           background:#161b22; border:1px solid #30363d; border-right:0;
-           padding:9px 6px 8px 6px; text-align:center; text-decoration:none;
-           color:#e6edf3; font-size:10px; letter-spacing:1.5px; }
-a.ribbon .rlabel { display:block; margin-top:3px; line-height:13px; }
+/* A maroon band with dashed gold edges, forked at the free end. The fork is
+   two border triangles rather than a picture: an element with no width or
+   height, a solid top and bottom border and a *transparent* left one, is a
+   swallowtail — and because the notch is transparent rather than painted in
+   the page colour, it works over whatever the ribbon happens to be lying on.
+   Two of them stacked, the gold one fractionally larger, give the tail the
+   same rim the band has. Border triangles are as old as CSS2 and render on
+   everything this page targets. */
+a.ribbon { position:fixed; top:100px; right:0; z-index:40;
+           width:46px; height:42px;
+           background:#7a1520;
+           border-top:2px dashed #e3b341; border-bottom:2px dashed #e3b341;
+           border-left:0; border-right:0;
+           text-decoration:none; }
+a.ribbon .rtrophy { display:block; margin:8px auto 0 auto; }
+/* Behind: the gold rim. In front and 3px smaller on every side: the maroon.
+   Both sit to the left of the band, hence the negative placement. */
+a.ribbon .tailedge { position:absolute; left:-19px; top:-2px;
+                     width:0; height:0; border-left:19px solid transparent;
+                     border-top:23px solid #e3b341;
+                     border-bottom:23px solid #e3b341; }
+a.ribbon .tail { position:absolute; left:-16px; top:1px;
+                 width:0; height:0; border-left:16px solid transparent;
+                 border-top:20px solid #7a1520;
+                 border-bottom:20px solid #7a1520; }
 /* Translucent rather than opaque, so the dashboard stays faintly visible
    underneath and the sheet reads as sitting on top of it rather than as a
    different page. */
@@ -1043,19 +1063,27 @@ def _page_href(base_path: str, range_key: str, *, boards: bool) -> str:
 
 
 def _ribbon(view: RangeView, base_path: str) -> str:
-    """The tab that opens the sheet, pinned below the hero row on the right.
+    """The ribbon that opens the sheet, pinned below the hero row on the right.
 
     Fixed rather than in flow so it stays reachable at any scroll position,
     and 100px down so it clears the title bar and the hero row's top edge
     instead of sitting on top of the all-time figure.
+
+    No wording on it. A trophy at 26px on a maroon band reads as "prizes"
+    from across a room, where two lines of 10px capitals read as a smudge —
+    and the label was the only reason the band had to be 92px wide.
     """
     href = _page_href(base_path, view.key, boards=True)
+    # The trophy carries the whole meaning now that the wording is gone, so
+    # the link needs a name of its own: a title for the pointer, an aria
+    # label for anything reading the page aloud.
     return (
-        f'<a class="ribbon" href="{escape(href)}">'
-        '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" '
-        'stroke="#e3b341" stroke-width="1.4" stroke-linecap="round" '
-        f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg>'
-        '<span class="rlabel">LEADER-<br>BOARDS</span></a>'
+        f'<a class="ribbon" href="{escape(href)}" title="All-time leaderboards" '
+        'aria-label="All-time leaderboards">'
+        '<span class="tailedge"></span><span class="tail"></span>'
+        '<svg class="rtrophy" width="26" height="26" viewBox="0 0 24 24" '
+        'fill="none" stroke="#f0c352" stroke-width="1.4" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg></a>'
     )
 
 
