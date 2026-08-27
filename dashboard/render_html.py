@@ -196,10 +196,13 @@ a.ribbon .tail { position:absolute; left:-17px; top:0;
    one band hanging off the edge reads as a bookmark, two of them read as a
    theme, and the panel it sits in already has the chrome a panel needs. A
    trophy and four words are enough. */
-a.boardslink { display:block; text-align:center; padding:9px 0 5px 0;
+a.boardslink { display:block; text-align:center; padding:10px 0 6px 0;
                color:#e3b341; font-size:13px; letter-spacing:1.5px;
                text-decoration:none; white-space:nowrap; }
-.btrophy { vertical-align:-6px; margin-right:8px; }
+/* Its own line, centred, with the words under it. Beside the text the cup
+   was competing with it for the same line; stacked, the drawing is what the
+   eye lands on and the words say what it opens. */
+.btrophy { display:block; margin:0 auto 7px auto; }
 /* Translucent rather than opaque, so the dashboard stays faintly visible
    underneath and the sheet reads as sitting on top of it rather than as a
    different page. */
@@ -1127,7 +1130,7 @@ def _boards_card(view: RangeView, base_path: str) -> str:
     href = _page_href(base_path, view.key, boards=True)
     return (
         f'<a class="boardslink" href="{escape(href)}">'
-        '<svg class="btrophy" width="24" height="24" viewBox="0 0 24 24" '
+        '<svg class="btrophy" width="30" height="30" viewBox="0 0 24 24" '
         'fill="none" stroke="#e3b341" stroke-width="1.4" stroke-linecap="round" '
         f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg>'
         "TOP THREE, ALL TIME</a>"
