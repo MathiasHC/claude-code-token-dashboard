@@ -184,22 +184,20 @@ a.ribbon .rtrophy { display:block; margin:6px auto 0 auto; }
    holding it at 2px along the slope would put a step back at the join. The
    join is the part the eye lands on, so that is the one that is kept honest.
    Both sit to the left of the band, hence the negative placement. */
-.tailedge { position:absolute; left:-19px; top:-2px;
-            width:0; height:0; border-left:19px solid transparent;
-            border-top:21px solid #e3b341; border-bottom:21px solid #e3b341; }
-.tail { position:absolute; left:-17px; top:0;
-        width:0; height:0; border-left:17px solid transparent;
-        border-top:19px solid #7a1520; border-bottom:19px solid #7a1520; }
-/* The same band as a panel in the grid, so the boards are reachable while
-   reading the breakdowns and not only from the pinned tab. Both are 42px
-   outer with 2px edges, which is why one set of tail rules serves both —
-   the numbers above are the band's geometry, not the tab's. The left margin
-   is the tail's own width, so it has somewhere to sit inside the card. */
-a.boardsband { position:relative; display:block; margin:2px 0 0 19px;
-               height:42px; line-height:38px; text-align:center;
-               background:#7a1520;
-               border-top:2px solid #e3b341; border-bottom:2px solid #e3b341;
-               color:#f0c352; font-size:11px; letter-spacing:1.5px;
+a.ribbon .tailedge { position:absolute; left:-19px; top:-2px;
+                     width:0; height:0; border-left:19px solid transparent;
+                     border-top:21px solid #e3b341;
+                     border-bottom:21px solid #e3b341; }
+a.ribbon .tail { position:absolute; left:-17px; top:0;
+                 width:0; height:0; border-left:17px solid transparent;
+                 border-top:19px solid #7a1520;
+                 border-bottom:19px solid #7a1520; }
+/* The grid's way in to the same sheet. Deliberately not a second ribbon:
+   one band hanging off the edge reads as a bookmark, two of them read as a
+   theme, and the panel it sits in already has the chrome a panel needs. A
+   trophy and four words are enough. */
+a.boardslink { display:block; text-align:center; padding:9px 0 5px 0;
+               color:#e3b341; font-size:13px; letter-spacing:1.5px;
                text-decoration:none; white-space:nowrap; }
 .btrophy { vertical-align:-6px; margin-right:8px; }
 /* Translucent rather than opaque, so the dashboard stays faintly visible
@@ -1121,13 +1119,16 @@ def _boards_card(view: RangeView, base_path: str) -> str:
     Two routes to the same place on purpose: the tab stays reachable at any
     scroll position, and the card is where the eye already is when it has
     just finished reading the breakdowns either side of it.
+
+    The card is plain. Repeating the ribbon here made the band look like a
+    motif rather than a marker, and the panel already brings its own border
+    and heading — the drawing and the words are the whole content.
     """
     href = _page_href(base_path, view.key, boards=True)
     return (
-        f'<a class="boardsband" href="{escape(href)}">'
-        '<span class="tailedge"></span><span class="tail"></span>'
-        '<svg class="btrophy" width="22" height="22" viewBox="0 0 24 24" '
-        'fill="none" stroke="#f0c352" stroke-width="1.4" stroke-linecap="round" '
+        f'<a class="boardslink" href="{escape(href)}">'
+        '<svg class="btrophy" width="24" height="24" viewBox="0 0 24 24" '
+        'fill="none" stroke="#e3b341" stroke-width="1.4" stroke-linecap="round" '
         f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg>'
         "TOP THREE, ALL TIME</a>"
     )

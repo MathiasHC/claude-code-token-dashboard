@@ -803,7 +803,7 @@ def test_the_ribbon_is_always_there_and_the_sheet_is_not():
     page height they used to cost."""
     closed = render_html.render(_golden_data())
     assert 'class="ribbon"' in closed
-    assert 'class="boardsband"' in closed, "the grid card is always there too"
+    assert 'class="boardslink"' in closed, "the grid card is always there too"
     # Whether the sheet is open is a structural question, not a wording one:
     # the grid card carries the word LEADERBOARDS on the closed page.
     assert '<div class="overlay">' not in closed
