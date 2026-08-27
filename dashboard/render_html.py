@@ -192,6 +192,17 @@ a.ribbon .tail { position:absolute; left:-17px; top:0;
                  width:0; height:0; border-left:17px solid transparent;
                  border-top:19px solid #7a1520;
                  border-bottom:19px solid #7a1520; }
+/* The grid's way in to the same sheet. Deliberately not a second ribbon:
+   one band hanging off the edge reads as a bookmark, two of them read as a
+   theme, and the panel it sits in already has the chrome a panel needs. A
+   trophy and four words are enough. */
+a.boardslink { display:block; text-align:center; padding:10px 0 6px 0;
+               color:#e3b341; font-size:13px; letter-spacing:1.5px;
+               text-decoration:none; white-space:nowrap; }
+/* Its own line, centred, with the words under it. Beside the text the cup
+   was competing with it for the same line; stacked, the drawing is what the
+   eye lands on and the words say what it opens. */
+.btrophy { display:block; margin:0 auto 7px auto; }
 /* Translucent rather than opaque, so the dashboard stays faintly visible
    underneath and the sheet reads as sitting on top of it rather than as a
    different page. */
@@ -1105,6 +1116,27 @@ def _ribbon(view: RangeView, base_path: str) -> str:
     )
 
 
+def _boards_card(view: RangeView, base_path: str) -> str:
+    """The leaderboards as a panel in the grid, beside the pinned tab.
+
+    Two routes to the same place on purpose: the tab stays reachable at any
+    scroll position, and the card is where the eye already is when it has
+    just finished reading the breakdowns either side of it.
+
+    The card is plain. Repeating the ribbon here made the band look like a
+    motif rather than a marker, and the panel already brings its own border
+    and heading — the drawing and the words are the whole content.
+    """
+    href = _page_href(base_path, view.key, boards=True)
+    return (
+        f'<a class="boardslink" href="{escape(href)}">'
+        '<svg class="btrophy" width="30" height="30" viewBox="0 0 24 24" '
+        'fill="none" stroke="#e3b341" stroke-width="1.4" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg>'
+        "TOP THREE, ALL TIME</a>"
+    )
+
+
 def _leaderboards(boards, columns: int) -> str:
     """The boards laid out `columns` to a row, for the sheet.
 
@@ -1264,19 +1296,21 @@ def render(
 </tbody></table>
 <table class="grid"><tbody>
 <tr>
+<td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
 <td><h2>BY PROJECT &middot; {escape(view.label)}</h2>{_rows(view.by_project)}</td>
+<td><h2>LEADERBOARDS</h2>{_boards_card(view, base_path)}
+<div class="note">twelve boards &middot; the only panel here that ignores the range</div></td>
+</tr>
+<tr>
+<td><h2>BY MODE &middot; {escape(view.label)}</h2>{_rows(view.by_mode)}</td>
 <td><h2>BY SKILL &middot; {escape(view.label)} &middot; ATTRIBUTED</h2>{_rows(view.by_skill)}
 {_origin_note(view)}</td>
-<td><h2>BY MODE &middot; {escape(view.label)}</h2>{_rows(view.by_mode)}</td>
-<td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
+<td><h2>SKILL RUNS &middot; {escape(view.label)}</h2>{_skill_runs(view.skill_runs)}</td>
 </tr>
-</tbody></table>
-<table class="grid"><tbody>
 <tr>
 <td><h2>BY EFFORT &middot; {escape(view.label)}</h2>{_rows(view.by_effort)}</td>
 <td><h2>BY BRANCH &middot; {escape(view.label)}</h2>{_rows(view.by_branch)}</td>
 <td><h2>BY MCP SERVER &middot; {escape(view.label)}</h2>{_rows(view.by_mcp)}</td>
-<td><h2>SKILL RUNS &middot; {escape(view.label)}</h2>{_skill_runs(view.skill_runs)}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>

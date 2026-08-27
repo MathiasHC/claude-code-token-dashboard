@@ -84,9 +84,10 @@ with it but is not a placing — the earliest start under the latest nights.
 
 ## Sheet
 
-The overlay the leaderboards live in, opened by the **ribbon** — the trophy tab
-pinned 100px down the right edge — and closed by the CLOSE control or by
-tapping the scrim behind it.
+The overlay the leaderboards live in, opened either by the **ribbon** — the
+trophy tab pinned 100px down the right edge — or by the LEADERBOARDS panel in
+the grid, which is the same band and tail laid along a card. Closed by the
+CLOSE control or by tapping the scrim behind it.
 
 Open or closed is view state, and it travels in the query string
 (`?boards=open`) exactly as the selected range does. Not a CSS or JavaScript
