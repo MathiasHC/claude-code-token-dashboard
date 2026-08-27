@@ -184,14 +184,24 @@ a.ribbon .rtrophy { display:block; margin:6px auto 0 auto; }
    holding it at 2px along the slope would put a step back at the join. The
    join is the part the eye lands on, so that is the one that is kept honest.
    Both sit to the left of the band, hence the negative placement. */
-a.ribbon .tailedge { position:absolute; left:-19px; top:-2px;
-                     width:0; height:0; border-left:19px solid transparent;
-                     border-top:21px solid #e3b341;
-                     border-bottom:21px solid #e3b341; }
-a.ribbon .tail { position:absolute; left:-17px; top:0;
-                 width:0; height:0; border-left:17px solid transparent;
-                 border-top:19px solid #7a1520;
-                 border-bottom:19px solid #7a1520; }
+.tailedge { position:absolute; left:-19px; top:-2px;
+            width:0; height:0; border-left:19px solid transparent;
+            border-top:21px solid #e3b341; border-bottom:21px solid #e3b341; }
+.tail { position:absolute; left:-17px; top:0;
+        width:0; height:0; border-left:17px solid transparent;
+        border-top:19px solid #7a1520; border-bottom:19px solid #7a1520; }
+/* The same band as a panel in the grid, so the boards are reachable while
+   reading the breakdowns and not only from the pinned tab. Both are 42px
+   outer with 2px edges, which is why one set of tail rules serves both —
+   the numbers above are the band's geometry, not the tab's. The left margin
+   is the tail's own width, so it has somewhere to sit inside the card. */
+a.boardsband { position:relative; display:block; margin:2px 0 0 19px;
+               height:42px; line-height:38px; text-align:center;
+               background:#7a1520;
+               border-top:2px solid #e3b341; border-bottom:2px solid #e3b341;
+               color:#f0c352; font-size:11px; letter-spacing:1.5px;
+               text-decoration:none; white-space:nowrap; }
+.btrophy { vertical-align:-6px; margin-right:8px; }
 /* Translucent rather than opaque, so the dashboard stays faintly visible
    underneath and the sheet reads as sitting on top of it rather than as a
    different page. */
@@ -1105,6 +1115,24 @@ def _ribbon(view: RangeView, base_path: str) -> str:
     )
 
 
+def _boards_card(view: RangeView, base_path: str) -> str:
+    """The leaderboards as a panel in the grid, beside the pinned tab.
+
+    Two routes to the same place on purpose: the tab stays reachable at any
+    scroll position, and the card is where the eye already is when it has
+    just finished reading the breakdowns either side of it.
+    """
+    href = _page_href(base_path, view.key, boards=True)
+    return (
+        f'<a class="boardsband" href="{escape(href)}">'
+        '<span class="tailedge"></span><span class="tail"></span>'
+        '<svg class="btrophy" width="22" height="22" viewBox="0 0 24 24" '
+        'fill="none" stroke="#f0c352" stroke-width="1.4" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true">{_TROPHY}</svg>'
+        "TOP THREE, ALL TIME</a>"
+    )
+
+
 def _leaderboards(boards, columns: int) -> str:
     """The boards laid out `columns` to a row, for the sheet.
 
@@ -1264,19 +1292,21 @@ def render(
 </tbody></table>
 <table class="grid"><tbody>
 <tr>
+<td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
 <td><h2>BY PROJECT &middot; {escape(view.label)}</h2>{_rows(view.by_project)}</td>
+<td><h2>LEADERBOARDS</h2>{_boards_card(view, base_path)}
+<div class="note">twelve boards &middot; the only panel here that ignores the range</div></td>
+</tr>
+<tr>
+<td><h2>BY MODE &middot; {escape(view.label)}</h2>{_rows(view.by_mode)}</td>
 <td><h2>BY SKILL &middot; {escape(view.label)} &middot; ATTRIBUTED</h2>{_rows(view.by_skill)}
 {_origin_note(view)}</td>
-<td><h2>BY MODE &middot; {escape(view.label)}</h2>{_rows(view.by_mode)}</td>
-<td><h2>TOP SESSIONS &middot; {escape(view.label)}</h2>{_session_rows(view.top_sessions)}</td>
+<td><h2>SKILL RUNS &middot; {escape(view.label)}</h2>{_skill_runs(view.skill_runs)}</td>
 </tr>
-</tbody></table>
-<table class="grid"><tbody>
 <tr>
 <td><h2>BY EFFORT &middot; {escape(view.label)}</h2>{_rows(view.by_effort)}</td>
 <td><h2>BY BRANCH &middot; {escape(view.label)}</h2>{_rows(view.by_branch)}</td>
 <td><h2>BY MCP SERVER &middot; {escape(view.label)}</h2>{_rows(view.by_mcp)}</td>
-<td><h2>SKILL RUNS &middot; {escape(view.label)}</h2>{_skill_runs(view.skill_runs)}</td>
 </tr>
 </tbody></table>
 <table class="grid"><tbody>

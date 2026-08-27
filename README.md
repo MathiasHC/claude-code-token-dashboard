@@ -147,8 +147,10 @@ properties, no `rem` units and no usable ES5 — so the layout is tables and
 that as a compatibility lint, so it cannot quietly regress. If it renders
 there, it renders anywhere.
 
-The page is laid out for a width of **1024** and is **1251px tall**, measured
-in a 1024-wide frame rather than estimated. Everything down to and including
+The page is laid out for a width of **1024** and is **1329px tall**, measured
+in a 1024-wide frame rather than estimated. The breakdown panels run three to
+a row rather than four: at four, a long branch name and its amount had
+nowhere to go and ran into the panel beside it. Everything down to and including
 the daily chart fits a 1024×768 screen; the two card rows — machine time and
 footprint — need a short scroll.
 

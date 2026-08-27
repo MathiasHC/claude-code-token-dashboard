@@ -679,8 +679,10 @@ def test_axis_labels_drop_the_cents():
 def test_the_three_breakdowns_share_a_row_and_the_chart_spans_the_width():
     data = aggregate.build([rec("m1", "2026-07-30")], {}, now=NOW)
     out = render_html.render(data)
-    assert "</td>\n<td><h2>BY SKILL" in out
-    assert "</td>\n<td><h2>TOP SESSIONS" in out
+    # Three to a row, in the order the panels are meant to read.
+    assert "</td>\n<td><h2>BY PROJECT" in out
+    assert "</td>\n<td><h2>SKILL RUNS" in out
+    assert "</td>\n<td><h2>BY MCP SERVER" in out
     # The chart is alone in the last grid table, so it spans the full
     # width. The leaderboards are grid tables too, but they live in the
     # sheet, which is not rendered unless it is asked for.
@@ -758,7 +760,6 @@ def test_no_leaderboards_means_no_sheet_even_when_asked_for_one():
     out = render_html.render(
         dataclasses.replace(_golden_data(), leaderboards=[]), boards_open=True
     )
-    assert "ALL-TIME LEADERBOARDS" not in out
     assert '<div class="overlay">' not in out
 
 
@@ -802,8 +803,10 @@ def test_the_ribbon_is_always_there_and_the_sheet_is_not():
     page height they used to cost."""
     closed = render_html.render(_golden_data())
     assert 'class="ribbon"' in closed
+    assert 'class="boardsband"' in closed, "the grid card is always there too"
+    # Whether the sheet is open is a structural question, not a wording one:
+    # the grid card carries the word LEADERBOARDS on the closed page.
     assert '<div class="overlay">' not in closed
-    assert "ALL-TIME LEADERBOARDS" not in closed
 
     opened = render_html.render(_golden_data(), boards_open=True)
     assert 'class="ribbon"' in opened

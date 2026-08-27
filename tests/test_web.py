@@ -547,15 +547,16 @@ def test_the_server_still_rejects_a_genuinely_wrong_token(server):
 
 def test_the_query_string_opens_the_leaderboard_sheet(tmp_path):
     app = make_app(tmp_path)
-    assert "ALL-TIME LEADERBOARDS" not in app.page()
-    assert "ALL-TIME LEADERBOARDS" in app.page(None, "open")
+    # Structural, not wording: the grid card says LEADERBOARDS either way.
+    assert '<div class="overlay">' not in app.page()
+    assert '<div class="overlay">' in app.page(None, "open")
 
 
 def test_any_other_value_leaves_the_sheet_shut(tmp_path):
     """A stale or half-typed bookmark must not half-open anything."""
     app = make_app(tmp_path)
     for value in ("", "1", "true", "OPEN", "closed"):
-        assert "ALL-TIME LEADERBOARDS" not in app.page(None, value), value
+        assert '<div class="overlay">' not in app.page(None, value), value
 
 
 def test_the_sheet_and_the_range_are_independent(tmp_path):
@@ -563,7 +564,7 @@ def test_the_sheet_and_the_range_are_independent(tmp_path):
     boards are all-time either way."""
     page = make_app(tmp_path).page("7d", "open")
     assert "LAST 7 DAYS" in page
-    assert "ALL-TIME LEADERBOARDS" in page
+    assert '<div class="overlay">' in page
 
 
 def test_opening_the_sheet_does_not_trigger_a_fresh_scan(tmp_path):
