@@ -262,6 +262,50 @@ def test_daily_series_is_limited_and_chronological():
     assert daily[-1].day == "2026-07-30"
 
 
+def test_daily_series_keeps_the_days_that_carried_nothing():
+    """A chart with its empty days removed is not a timeline. Two working
+    days either side of a weekend used to render as two adjacent bars, so
+    a week off and a busy week looked the same width."""
+    records = [rec("m1", "2026-07-24"), rec("m2", "2026-07-27")]  # Friday, Monday
+    daily = aggregate.build(records, {}, now=NOW, range_key="all").scoped.daily
+    assert [point.day for point in daily] == [
+        (dt.date(2026, 7, 24) + dt.timedelta(days=offset)).isoformat()
+        for offset in range(7)
+    ]
+    assert [point.cost for point in daily][1:3] == [0.0, 0.0]  # the weekend
+
+
+def test_daily_series_runs_to_today_even_when_today_is_idle():
+    """The window ends now, not at the last day that happened to cost
+    something — otherwise a quiet morning silently shortens the axis."""
+    daily = aggregate.build([rec("m1", "2026-07-28")], {}, now=NOW, range_key="all").scoped.daily
+    assert [point.day for point in daily] == ["2026-07-28", "2026-07-29", "2026-07-30"]
+    assert daily[-1].cost == 0.0
+
+
+def test_daily_series_does_not_invent_days_before_the_history():
+    """A day before the first record is not a day that cost nothing, it is a
+    day nothing is known about. Thirty empty bars in front of a fresh install
+    would claim otherwise."""
+    daily = aggregate.build([rec("m1", "2026-07-29")], {}, now=NOW, range_key="30d").scoped.daily
+    assert [point.day for point in daily] == ["2026-07-29", "2026-07-30"]
+
+
+def test_daily_series_drops_a_day_that_cannot_be_placed_on_the_axis():
+    records = [rec("m1", "2026-07-29"), rec("m2", "not-a-day")]
+    daily = aggregate.build(records, {}, now=NOW, range_key="all").scoped.daily
+    assert [point.day for point in daily] == ["2026-07-29", "2026-07-30"]
+
+
+def test_active_day_count_still_counts_only_the_days_that_cost_something():
+    """The heading says ACTIVE DAYS, and the filled days are not active
+    ones — the bar count and the active count are now two different facts."""
+    records = [rec("m1", "2026-07-24"), rec("m2", "2026-07-27")]
+    view = aggregate.build(records, {}, now=NOW, range_key="all").scoped
+    assert len(view.daily) == 7
+    assert view.active_day_count == 2
+
+
 def test_records_with_no_day_are_ignored_by_windows():
     assert aggregate.build([rec("m1", "")], {}, now=NOW).all_time.messages == 0
 

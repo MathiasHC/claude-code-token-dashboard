@@ -186,3 +186,39 @@ def test_returning_to_the_default_is_always_one_click_away():
         aggregate.build(SPREAD, {}, now=NOW, range_key="today"), base_path="/d/tok"
     )
     assert 'href="/d/tok"' in out
+
+
+# --- the daily chart's axis -------------------------------------------------
+
+def test_day_span_is_every_calendar_day_up_to_today():
+    assert ranges.day_span("2026-08-04", NOW) == [
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+    ]
+
+
+def test_day_span_keeps_the_days_nothing_happened_on():
+    """A weekend is two days whatever was spent on it. The span is built
+    from the calendar, so it cannot skip them."""
+    span = ranges.day_span("2026-07-31", NOW)
+    assert "2026-08-01" in span and "2026-08-02" in span  # a Saturday and a Sunday
+    assert span == sorted(span)
+    assert len(span) == 8
+
+
+def test_day_span_of_a_single_day_is_that_day():
+    assert ranges.day_span("2026-08-07", NOW) == ["2026-08-07"]
+
+
+def test_day_span_of_a_day_that_will_not_parse_is_empty():
+    """Same rule as every other window: a day that cannot be placed on a
+    timeline is not on this one either."""
+    assert ranges.day_span("not-a-day", NOW) == []
+
+
+def test_day_span_does_not_run_backwards_from_a_future_day():
+    """A skewed clock on the writing machine can stamp a record ahead of the
+    reading one. That is one bar, not a negative range."""
+    assert ranges.day_span("2026-08-09", NOW) == ["2026-08-09"]

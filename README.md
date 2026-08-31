@@ -80,10 +80,12 @@ layout before you have any history of your own.*
   anything that will not animate. The estimate is good to about an order of
   magnitude and says so on the page; method and sources in
   [docs/footprint.md](docs/footprint.md).
-- **A daily chart** — the last 30 active days across the full width, with
+- **A daily chart** — the last 30 calendar days across the full width, with
   today picked out and a value axis that snaps to round money: the $151 peak
   above draws lines at $80 and $160, so the bars are readable as amounts
-  rather than only as relative heights.
+  rather than only as relative heights. Days you spent nothing on keep their
+  place in the row, weekends included, so the gaps are as legible as the
+  bars and the width of a quiet fortnight looks like one.
 
 ## Requirements
 
