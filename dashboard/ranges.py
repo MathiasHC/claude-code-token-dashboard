@@ -150,6 +150,44 @@ def in_previous_month_to_date(now: dt.datetime) -> DayFilter:
     return within
 
 
+# --- the daily chart's axis ---------------------------------------------
+
+
+def day_span(first: str, now: dt.datetime) -> list[str]:
+    """Every calendar day from `first` up to and including today.
+
+    The daily chart plots a timeline, and a timeline with its empty days
+    taken out is not one. Built from the days that carried spend, a Friday
+    and the following Monday rendered as two adjacent bars, so every weekend
+    closed up and a fortnight off looked exactly like a fortnight of work.
+    The span therefore comes from the calendar, not from the data.
+
+    It is bounded at the two ends by different things on purpose:
+
+    - It runs to *today*, not to the last day that cost something, so a
+      quiet morning cannot silently shorten the axis. Those trailing days
+      are inside the observed history — the transcripts run up to now — so
+      "nothing was spent" is a reading rather than a gap.
+    - It starts at the *first day that carried spend*, not at the start of
+      the selected window. A day before the history begins is not a day
+      that cost nothing, it is a day nothing is known about, and thirty
+      empty bars in front of a fresh install would claim otherwise.
+
+    A day that will not parse gets the same answer it gets from every other
+    window here: it cannot be placed on a timeline, so it is not on this
+    one. See dates.parse_day.
+    """
+    start = parse_day(first)
+    if start is None:
+        return []
+    end = now.date()
+    # A clock skewed ahead on the writing machine can stamp a record past
+    # the reading machine's today. That is one bar, not a negative range.
+    if end <= start:
+        return [start.isoformat()]
+    return [(start + dt.timedelta(days=offset)).isoformat() for offset in range((end - start).days + 1)]
+
+
 def contains(selected: Range, now: dt.datetime) -> DayFilter:
     """Build the day predicate for one catalogue range."""
     if selected.key == "all":

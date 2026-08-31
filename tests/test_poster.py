@@ -262,10 +262,16 @@ def test_todays_column_is_marked():
     assert out.count('class="col today"') == 1
 
 
-def test_no_column_is_marked_when_today_has_no_usage():
+def test_todays_column_is_present_and_marked_even_when_today_is_idle():
+    """Today used to drop out of the chart until it had cost something, so a
+    day that had not started yet looked exactly like a day that was not in
+    the window. It is now a marked column sitting on the baseline — the
+    existing 1px height floor is what keeps the marker findable, which is
+    the only job the colour has."""
     records = [rec("m1", "2026-08-10"), rec("m2", "2026-08-09")]
     out = render_html.render(aggregate.build(records, {}, now=NOW))
-    assert 'class="col today"' not in out
+    assert out.count('class="col today"') == 1
+    assert 'class="col today" style="height:1px"' in out
 
 
 # --- the default range --------------------------------------------------

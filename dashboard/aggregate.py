@@ -375,7 +375,10 @@ def build(
     burn_rate, idle_minutes = _burn_rate(todays, costs, now)
 
     grand_total = scoped_total
-    recent_days = sorted(per_day)[-DAILY_DAYS:]
+    # The chart's x axis is a calendar, not the list of days that spent
+    # something — see ranges.day_span for which end is bounded by what.
+    plotted = [day for day in per_day if dates.parse_day(day) is not None]
+    recent_days = ranges.day_span(min(plotted), now)[-DAILY_DAYS:] if plotted else []
 
     session_bars = [
         Bar(
@@ -435,7 +438,7 @@ def build(
         busiest_hour=(max(per_hour, key=per_hour.get) if per_hour else -1),
         weekend_share=(weekend_cost / grand_total if grand_total else 0.0),
         top_sessions=session_bars,
-        daily=[DayCost(day=day, cost=per_day[day]) for day in recent_days],
+        daily=[DayCost(day=day, cost=per_day.get(day, 0.0)) for day in recent_days],
         main_cost=main_cost,
         subagent_cost=subagent_cost,
         cache_saved=cache_saved,

@@ -123,10 +123,35 @@ dilute the rate to nothing and the figure would stop describing the work.
 ## Active day
 
 A day that carried any spend. `active_days` counts them across all history;
-`RangeView.active_day_count` counts them inside the selected range, and is the
-number of bars in the daily chart. Distinct from the *width* of a window — a
-30-day range with three active days plots three bars, and saying "last 3 days"
-about it is wrong.
+`RangeView.active_day_count` counts them inside the selected range. Distinct
+from the *width* of a window — saying "last 3 days" about a 30-day range that
+happens to hold three active days is wrong — and distinct from the number of
+bars in the daily chart, which plots a **chart axis** rather than a list of
+active days. The chart heading states the window and the active count
+separately because neither one implies the other.
+
+## Chart axis
+
+The run of calendar days the daily chart plots, one bar each, built by
+`ranges.day_span`. Every day in it, including the ones that cost nothing.
+
+A chart drawn from the active days alone is not a timeline: a Friday and the
+following Monday come out as adjacent bars, so every weekend closes up and a
+fortnight off is the same width as a fortnight of work.
+
+The two ends are bounded by different things, and the asymmetry is the point:
+
+- It runs to **today**, not to the last day that cost something, so a quiet
+  morning cannot silently shorten the axis. Days after the last spend are
+  still inside the observed history — the transcripts run up to now — so a
+  zero there is a reading.
+- It starts at the **first active day in the range**, not at the start of the
+  window. A day before the history begins is not a day that cost nothing, it
+  is a day nothing is known about, and a fresh install would otherwise open
+  with twenty-nine empty bars asserting the former.
+
+A day that will not parse is not on the axis, for the same reason it is
+inside no other window: it cannot be placed on a timeline. See `dates.parse_day`.
 
 ## Skill run
 

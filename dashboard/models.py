@@ -276,9 +276,14 @@ class RangeView:
 
     @property
     def active_day_count(self) -> int:
-        """Days inside the range that carried any spend — which is what the
-        daily chart plots, one bar each."""
-        return len(self.daily)
+        """Days inside the range that carried any spend.
+
+        Not the number of bars in the daily chart. The chart plots every
+        calendar day in the window, the empty ones included, so the two
+        diverge the moment anybody takes a weekend off — which is the whole
+        reason the heading states the window and this count separately.
+        """
+        return sum(1 for point in self.daily if point.cost)
 
 
 @dataclass(frozen=True)
